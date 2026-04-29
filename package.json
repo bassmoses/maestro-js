@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Human-friendly music library — write, render, and play music with simple syntax",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "rollup -c rollup.config.ts --configPlugin typescript",
     "test": "vitest run --coverage",

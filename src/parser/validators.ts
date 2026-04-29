@@ -104,10 +104,10 @@ export function validate(nodes: NoteNode[], timeSignature?: string): ValidationE
         if (measure.length === 0) continue
 
         // Count beats correctly:
-        // - Chord notes after the first in each group are skipped (they sound simultaneously)
+        // - Chord notes in the same chordGroup share time (only count once per group)
         // - Triplet notes are counted as their raw beats * (2/3) per group
         let totalBeats = 0
-        let inChord = false
+        const seenChordGroups = new Set<number>()
         const seenTripletGroups = new Set<number>()
 
         for (const node of measure) {
@@ -117,20 +117,21 @@ export function validate(nodes: NoteNode[], timeSignature?: string): ValidationE
             const group = node.tripletGroup!
             if (!seenTripletGroups.has(group)) {
               // Collect all nodes in this triplet group and sum their beats * 2/3
-              const groupNodes = measure.filter(n => n.triplet && n.tripletGroup === group)
+              const groupNodes = measure.filter((n) => n.triplet && n.tripletGroup === group)
               const rawBeats = groupNodes.reduce((s, n) => s + nodeBeats(n), 0)
               totalBeats += rawBeats * (2 / 3)
               seenTripletGroups.add(group)
             }
-            inChord = false
           } else if (node.chord) {
-            if (!inChord) {
+            const group = node.chordGroup
+            if (group !== undefined && !seenChordGroups.has(group)) {
               totalBeats += nodeBeats(node)
-              inChord = true
+              seenChordGroups.add(group)
+            } else if (group === undefined) {
+              // Legacy: no chordGroup, count only first in contiguous chord sequence
+              totalBeats += nodeBeats(node)
             }
-            // else: skip — same chord group sounds simultaneously
           } else {
-            inChord = false
             totalBeats += nodeBeats(node)
           }
         }
@@ -139,6 +140,13 @@ export function validate(nodes: NoteNode[], timeSignature?: string): ValidationE
         if (totalBeats > beatsPerMeasure + tolerance) {
           errors.push({
             message: `Measure ${m + 1} overflows the time signature ${timeSignature}: ${totalBeats} beats exceeds ${beatsPerMeasure}`,
+            measure: m + 1,
+          })
+        } else if (totalBeats < beatsPerMeasure - tolerance) {
+          errors.push({
+            message: `Measure ${m + 1} is underfilled: ${totalBeats} beats is less than ${beatsPerMeasure}`,
+            measure: m + 1,
+            severity: 'warning',
           })
         }
       }

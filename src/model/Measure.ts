@@ -10,6 +10,7 @@ export interface TimeSignature {
 export class Measure {
   readonly timeSignature: TimeSignature
   private notes: Note[]
+  private _usedBeats: number = 0
 
   constructor(timeSignature: TimeSignature) {
     this.timeSignature = timeSignature
@@ -21,32 +22,38 @@ export class Measure {
    * e.g. 4/4 => 4 beats (based on quarter note = 1 beat reference).
    */
   private get capacityBeats(): number {
-    // beats in numerator * value of note denominator relative to quarter
-    // noteValue beats gives the beat value of one denominator note
     const noteBeats = DURATION_BEATS[this.timeSignature.noteValue]
     return this.timeSignature.beats * noteBeats
   }
 
   get totalBeats(): number {
-    return this.notes.reduce((sum, note) => sum + note.beats, 0)
+    return this._usedBeats
   }
 
   get beatsRemaining(): number {
-    return this.capacityBeats - this.totalBeats
+    return this.capacityBeats - this._usedBeats
   }
 
   get isFull(): boolean {
     return this.beatsRemaining <= 1e-9
   }
 
-  addNote(note: Note): void {
-    if (note.beats > this.beatsRemaining + 1e-9) {
+  /**
+   * Add a note to this measure.
+   * If `advanceTime` is false, the note is stacked at the current position
+   * (for chord notes that share the same time slot).
+   */
+  addNote(note: Note, advanceTime: boolean = true): void {
+    if (advanceTime && note.beats > this.beatsRemaining + 1e-9) {
       throw new Error(
         `Note (${note.beats} beats) would overflow measure ` +
           `(${this.beatsRemaining} beats remaining)`
       )
     }
     this.notes.push(note)
+    if (advanceTime) {
+      this._usedBeats += note.beats
+    }
   }
 
   getNotes(): readonly Note[] {

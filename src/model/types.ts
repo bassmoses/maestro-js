@@ -14,4 +14,7 @@ export interface NoteData {
   tied: boolean
   slurred: boolean
   chord: boolean // part of a chord group
+  chordGroup?: number // distinguishes separate chord groups
+  fermata?: boolean // fermata hold
+  triplet?: boolean // part of a triplet group
 }

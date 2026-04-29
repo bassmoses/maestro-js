@@ -17,6 +17,7 @@ function makeNode(overrides: Partial<NoteNode> = {}): NoteNode {
     isBarline: false,
     chord: false,
     triplet: false,
+    fermata: false,
   }
   return { ...defaults, ...overrides }
 }
@@ -136,10 +137,7 @@ describe('validate — time signature', () => {
 
   it('validates dotted notes correctly in time signature context', () => {
     // dotted half (3 beats) + quarter (1 beat) = 4 beats = correct 4/4
-    const nodes = [
-      makeNode({ duration: 'h', dotted: true }),
-      makeNode({ duration: 'q' }),
-    ]
+    const nodes = [makeNode({ duration: 'h', dotted: true }), makeNode({ duration: 'q' })]
     const errors = validate(nodes, '4/4')
     expect(errors).toHaveLength(0)
   })
@@ -154,10 +152,7 @@ describe('validate — chord beat counting', () => {
 
 describe('validate — triplet beat counting', () => {
   it('counts 4 triplet groups as exactly 4 beats in 4/4', () => {
-    const errors = validate(
-      parse('{C4 D4 E4}:q {F4 G4 A4}:q {B4 C5 D5}:q {E5 F5 G5}:q'),
-      '4/4'
-    )
+    const errors = validate(parse('{C4 D4 E4}:q {F4 G4 A4}:q {B4 C5 D5}:q {E5 F5 G5}:q'), '4/4')
     expect(errors).toHaveLength(0)
   })
 })
@@ -165,6 +160,7 @@ describe('validate — triplet beat counting', () => {
 describe('validate — invalid nodes (force invalid states)', () => {
   it('reports error for invalid pitch name', () => {
     // Force an invalid pitch via type casting (simulating corrupted AST)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const node = makeNode({ pitch: 'H' as any })
     const errors = validate([node])
     expect(errors.length).toBeGreaterThan(0)
@@ -172,6 +168,7 @@ describe('validate — invalid nodes (force invalid states)', () => {
   })
 
   it('reports error for invalid duration', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const node = makeNode({ duration: 'x' as any })
     const errors = validate([node])
     expect(errors.length).toBeGreaterThan(0)
@@ -179,6 +176,7 @@ describe('validate — invalid nodes (force invalid states)', () => {
   })
 
   it('reports error for invalid dynamic', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const node = makeNode({ dynamic: 'sfz' as any })
     const errors = validate([node])
     expect(errors.length).toBeGreaterThan(0)
@@ -186,6 +184,7 @@ describe('validate — invalid nodes (force invalid states)', () => {
   })
 
   it('reports error for octave out of range (negative)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const node = makeNode({ octave: -1 as any })
     const errors = validate([node])
     expect(errors.length).toBeGreaterThan(0)
@@ -193,6 +192,7 @@ describe('validate — invalid nodes (force invalid states)', () => {
   })
 
   it('reports error for octave out of range (too high)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const node = makeNode({ octave: 9 as any })
     const errors = validate([node])
     expect(errors.length).toBeGreaterThan(0)
@@ -200,10 +200,8 @@ describe('validate — invalid nodes (force invalid states)', () => {
   })
 
   it('collects multiple errors for multiple bad nodes', () => {
-    const nodes = [
-      makeNode({ pitch: 'H' as any }),
-      makeNode({ duration: 'x' as any }),
-    ]
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const nodes = [makeNode({ pitch: 'H' as any }), makeNode({ duration: 'x' as any })]
     const errors = validate(nodes)
     expect(errors.length).toBeGreaterThanOrEqual(2)
   })

@@ -21,6 +21,11 @@ const NOTE_VALUE_MAP: Record<string, DurationName> = {
   '32': 't',
 }
 
+export interface RepeatSection {
+  startMeasure: number // 1-based
+  endMeasure: number // 1-based, inclusive
+}
+
 export class Score {
   readonly tempo: number
   readonly timeSignature: TimeSignature
@@ -28,6 +33,9 @@ export class Score {
   readonly title: string
   readonly composer: string
   private parts: Map<string, Part>
+  private tempoMap: Map<number, number> = new Map() // measure number → BPM
+  private repeatSections: RepeatSection[] = []
+  private hasDaCapo: boolean = false
 
   constructor(options?: Partial<ScoreOptions>) {
     this.tempo = options?.tempo ?? 120
@@ -60,6 +68,9 @@ export class Score {
   }
 
   addPart(name: string): Part {
+    if (this.parts.has(name)) {
+      throw new Error(`Part "${name}" already exists. Use getPart() to retrieve it.`)
+    }
     const part = new Part(name)
     this.parts.set(name, part)
     return part
@@ -71,5 +82,66 @@ export class Score {
 
   getParts(): readonly Part[] {
     return Array.from(this.parts.values())
+  }
+
+  /**
+   * Set a tempo change at a specific measure.
+   * The tempo applies from that measure onwards until the next change.
+   */
+  tempoAt(measure: number, bpm: number): this {
+    this.tempoMap.set(measure, bpm)
+    return this
+  }
+
+  /**
+   * Get the full tempo map (measure → BPM).
+   * The Scheduler uses this for variable-tempo timelines.
+   */
+  getTempoMap(): ReadonlyMap<number, number> {
+    return this.tempoMap
+  }
+
+  /**
+   * Get the effective tempo at a specific measure number.
+   * Walks backwards through the tempo map to find the most recent change.
+   */
+  getTempoAtMeasure(measure: number): number {
+    let effectiveTempo = this.tempo
+    for (let m = 1; m <= measure; m++) {
+      if (this.tempoMap.has(m)) {
+        effectiveTempo = this.tempoMap.get(m)!
+      }
+    }
+    return effectiveTempo
+  }
+
+  /**
+   * Add a repeat section (measures between |: and :|).
+   */
+  addRepeatSection(startMeasure: number, endMeasure: number): this {
+    this.repeatSections.push({ startMeasure, endMeasure })
+    return this
+  }
+
+  /**
+   * Get all repeat sections.
+   */
+  getRepeatSections(): readonly RepeatSection[] {
+    return this.repeatSections
+  }
+
+  /**
+   * Mark this score as having a Da Capo (play from beginning after end).
+   */
+  setDaCapo(value: boolean): this {
+    this.hasDaCapo = value
+    return this
+  }
+
+  /**
+   * Whether this score has a Da Capo marking.
+   */
+  getDaCapo(): boolean {
+    return this.hasDaCapo
   }
 }

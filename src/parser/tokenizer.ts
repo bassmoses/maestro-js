@@ -1,5 +1,5 @@
-import type { Token, TokenType } from './types.js'
-import { MaestroError } from './errors.js'
+import type { Token } from './types.js'
+import { MaestroError, suggestPitch } from './errors.js'
 
 // Matches a single note token: pitch (or R for rest), optional accidental, optional octave, optional :duration[.], optional inline dynamic
 // e.g. C4:q, D#5:h., Bb3:e, R:q, C4:q(mp), C4:q(p<), C4, R:q (rest has no octave)
@@ -27,10 +27,30 @@ export function tokenize(input: string): Token[] {
       continue
     }
 
-    // Barline
+    // Barline or Repeat markers
     if (input[i] === '|') {
+      // |: repeat start
+      if (input[i + 1] === ':') {
+        tokens.push({ type: 'REPEAT_START', raw: '|:', position: i })
+        i += 2
+        continue
+      }
       tokens.push({ type: 'BARLINE', raw: '|', position: i })
       i++
+      continue
+    }
+
+    // :| repeat end
+    if (input[i] === ':' && input[i + 1] === '|') {
+      tokens.push({ type: 'REPEAT_END', raw: ':|', position: i })
+      i += 2
+      continue
+    }
+
+    // D.C. (Da Capo)
+    if (input.slice(i, i + 4) === 'D.C.') {
+      tokens.push({ type: 'DA_CAPO', raw: 'D.C.', position: i })
+      i += 4
       continue
     }
 
@@ -41,14 +61,14 @@ export function tokenize(input: string): Token[] {
       continue
     }
 
-    // Chord: [...]:<duration>[.]
+    // Chord: [...]:<duration>[.][(<dynamic>)]
     if (input[i] === '[') {
       const start = i
       const end = input.indexOf(']', i)
       if (end === -1) {
         throw new MaestroError('Unclosed chord bracket "[".', input, i, 1)
       }
-      // After ']', optionally consume :duration[.]
+      // After ']', optionally consume :duration[.] and optional (dynamic)
       let j = end + 1
       if (input[j] === ':') {
         j++ // skip ':'
@@ -57,6 +77,13 @@ export function tokenize(input: string): Token[] {
           if (j < input.length && input[j] === '.') {
             j++
           }
+        }
+      }
+      // Optionally consume inline dynamic: (mp), (ff), (p<), etc.
+      if (j < input.length && input[j] === '(') {
+        const dynEnd = input.indexOf(')', j)
+        if (dynEnd !== -1) {
+          j = dynEnd + 1
         }
       }
       const raw = input.slice(start, j)
@@ -114,11 +141,12 @@ export function tokenize(input: string): Token[] {
       const remaining = input.slice(i)
       const match = remaining.match(NOTE_PATTERN)
       if (!match) {
+        const badToken = remaining.split(/\s/)[0]
         throw new MaestroError(
-          `Unrecognized note token "${remaining.split(/\s/)[0]}" at position ${i}.`,
+          `Unrecognized note token "${badToken}" at position ${i}.`,
           input,
           i,
-          remaining.split(/\s/)[0].length
+          badToken.length
         )
       }
       const raw = match[0]
@@ -127,13 +155,24 @@ export function tokenize(input: string): Token[] {
       continue
     }
 
+    // Check if it's a letter that looks like a note but isn't A-G
+    if (/[a-zA-Z]/.test(input[i])) {
+      const badToken = input.slice(i).split(/[\s|~[\]{}()]/)[0]
+      const suggestion = suggestPitch(input[i])
+      const hint = suggestion
+        ? `"${input[i]}" is not a valid note name. Valid notes are: C D E F G A B\n  Did you mean: ${suggestion}${badToken.slice(1)}?`
+        : `"${input[i]}" is not a valid note name. Valid notes are: C D E F G A B`
+      throw new MaestroError(
+        `Unrecognized note token "${badToken}" at position ${i}.`,
+        input,
+        i,
+        badToken.length,
+        hint
+      )
+    }
+
     // Unknown character
-    throw new MaestroError(
-      `Unexpected character "${input[i]}" at position ${i}.`,
-      input,
-      i,
-      1
-    )
+    throw new MaestroError(`Unexpected character "${input[i]}" at position ${i}.`, input, i, 1)
   }
 
   return tokens

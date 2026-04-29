@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maestro.js — Simple Melody</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            max-width: 900px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        #sheet {
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+
+        button {
+            padding: 0.5rem 1.5rem;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-right: 0.5rem;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Simple Melody</h1>
+    <p>A C major scale — the simplest Maestro.js example.</p>
+    <div id="sheet"></div>
+    <button id="play">Play</button>
+    <button id="stop">Stop</button>
+
+    <script src="https://cdn.jsdelivr.net/npm/maestro-js/dist/maestro.umd.js"></script>
+    <script>
+        const song = new Maestro.Song({ tempo: 100 })
+        song.add('C4:q D4:q E4:q F4:q | G4:q A4:q B4:q C5:q | C5:w')
+        song.render('#sheet')
+
+        document.getElementById('play').addEventListener('click', () => song.play())
+        document.getElementById('stop').addEventListener('click', () => song.stop())
+    </script>
+</body>
+
+</html>

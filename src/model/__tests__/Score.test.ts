@@ -103,10 +103,9 @@ describe('Score parts management', () => {
     expect(parts.map((p) => p.name)).toEqual(['Violin', 'Cello', 'Viola'])
   })
 
-  it('addPart replaces existing part with same name', () => {
+  it('addPart throws on duplicate name', () => {
     score = new Score()
     score.addPart('Violin')
-    score.addPart('Violin') // replaces
-    expect(score.getParts()).toHaveLength(1)
+    expect(() => score.addPart('Violin')).toThrow('Part "Violin" already exists')
   })
 })

@@ -20,8 +20,12 @@ export function durationToBeats(dur: DurationName, dotted: boolean): number {
 
 /**
  * Convert beats to seconds given a BPM (quarter-note-based).
+ * Throws if BPM is not a positive finite number.
  */
 export function beatsToSeconds(beats: number, bpm: number): number {
+  if (bpm <= 0 || !isFinite(bpm)) {
+    throw new Error(`Invalid BPM value: ${bpm}. Must be a positive number.`)
+  }
   return (beats / bpm) * 60
 }
 

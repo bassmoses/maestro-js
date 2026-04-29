@@ -31,11 +31,10 @@ export function beatsToSeconds(beats: number, bpm: number): number {
  * Throws on unrecognised strings.
  */
 export function parseDuration(str: string): { duration: DurationName; dotted: boolean } {
-  const validDurations = new Set<string>(['w', 'h', 'q', 'e', 's', 't'])
   const dotted = str.endsWith('.')
   const base = dotted ? str.slice(0, -1) : str
 
-  if (!validDurations.has(base)) {
+  if (!(base in DURATION_BEATS)) {
     throw new Error(`Invalid duration string: "${str}"`)
   }
 

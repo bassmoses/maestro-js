@@ -34,8 +34,8 @@ export class Note implements NoteData {
   }
 
   get midi(): number | null {
-    if (this.isRest) return null
-    return pitchToMidi(this.pitch as PitchName, this.accidental, this.octave)
+    if (this.pitch === 'R') return null
+    return pitchToMidi(this.pitch, this.accidental, this.octave)
   }
 
   get frequency(): number | null {

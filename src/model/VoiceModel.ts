@@ -1,4 +1,3 @@
-import { DurationName } from './types.js'
 import { Note } from './Note.js'
 import { Measure, TimeSignature } from './Measure.js'
 
@@ -35,6 +34,6 @@ export class VoiceModel {
   }
 
   getAllNotes(): readonly Note[] {
-    return this.measures.flatMap((m) => [...m.getNotes()])
+    return this.measures.flatMap((m) => Array.from(m.getNotes()))
   }
 }

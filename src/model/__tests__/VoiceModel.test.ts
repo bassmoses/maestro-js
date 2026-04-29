@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { VoiceModel } from '../Voice.js'
+import { VoiceModel } from '../VoiceModel.js'
 import { Note } from '../Note.js'
 import { NoteData } from '../types.js'
 import { TimeSignature } from '../Measure.js'
@@ -81,7 +81,7 @@ describe('VoiceModel', () => {
     notes.forEach((n, i) => expect(all[i]).toBe(n))
   })
 
-  it('getMeasures returns readonly array', () => {
+  it('getMeasures returns all measures in order', () => {
     voice.addNote(makeNote(), TS_4_4)
     const measures = voice.getMeasures()
     expect(measures).toHaveLength(1)

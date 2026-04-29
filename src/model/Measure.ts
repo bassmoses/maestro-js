@@ -36,7 +36,7 @@ export class Measure {
   }
 
   get isFull(): boolean {
-    return this.beatsRemaining <= 0
+    return this.beatsRemaining <= 1e-9
   }
 
   addNote(note: Note): void {

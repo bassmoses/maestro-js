@@ -1,5 +1,6 @@
 import { DurationName } from './types.js'
 import { Part } from './Part.js'
+import { TimeSignature } from './Measure.js'
 
 export interface ScoreOptions {
   tempo: number // BPM, default 120
@@ -9,10 +10,7 @@ export interface ScoreOptions {
   composer?: string
 }
 
-export interface TimeSignatureParsed {
-  beats: number
-  noteValue: DurationName
-}
+export type { TimeSignature as TimeSignatureParsed }
 
 const NOTE_VALUE_MAP: Record<string, DurationName> = {
   '1': 'w',
@@ -25,7 +23,7 @@ const NOTE_VALUE_MAP: Record<string, DurationName> = {
 
 export class Score {
   readonly tempo: number
-  readonly timeSignature: TimeSignatureParsed
+  readonly timeSignature: TimeSignature
   readonly key: string
   readonly title: string
   readonly composer: string
@@ -40,7 +38,7 @@ export class Score {
     this.parts = new Map()
   }
 
-  static parseTimeSignature(str: string): TimeSignatureParsed {
+  static parseTimeSignature(str: string): TimeSignature {
     const parts = str.split('/')
     if (parts.length !== 2) {
       throw new Error(`Invalid time signature: "${str}"`)

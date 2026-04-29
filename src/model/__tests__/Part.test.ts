@@ -49,4 +49,10 @@ describe('Part', () => {
     })
     expect(part.getVoices()).toHaveLength(clefs.length)
   })
+
+  it('throws if voice with same name added twice', () => {
+    const part = new Part('Choir')
+    part.addVoice('soprano', 'treble')
+    expect(() => part.addVoice('soprano', 'treble')).toThrow('Voice "soprano" already exists')
+  })
 })

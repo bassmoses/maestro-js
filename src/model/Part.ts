@@ -1,4 +1,4 @@
-import { VoiceModel, Clef } from './Voice.js'
+import { VoiceModel, Clef } from './VoiceModel.js'
 
 export class Part {
   readonly name: string
@@ -10,6 +10,9 @@ export class Part {
   }
 
   addVoice(name: string, clef: Clef): VoiceModel {
+    if (this.voices.has(name)) {
+      throw new Error(`Voice "${name}" already exists in part "${this.name}"`)
+    }
     const voice = new VoiceModel(name, clef)
     this.voices.set(name, voice)
     return voice

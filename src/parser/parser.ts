@@ -1,10 +1,7 @@
 import type { NoteNode, PitchName, Accidental, Octave, DurationName, Dynamic, Token } from './types.js'
 import { tokenize } from './tokenizer.js'
 import { MaestroError } from './errors.js'
-
-const VALID_PITCHES = new Set(['C', 'D', 'E', 'F', 'G', 'A', 'B'])
-const VALID_DURATIONS = new Set<string>(['w', 'h', 'q', 'e', 's', 't'])
-const VALID_DYNAMICS = new Set<string>(['ppp', 'pp', 'p', 'mp', 'mf', 'f', 'ff', 'fff', 'cresc', 'decresc'])
+import { VALID_DYNAMIC_NAMES } from './constants.js'
 
 // Maps a triplet container duration to each note's duration.
 // Standard: triplet quarter = 3 eighths; triplet half = 3 quarters; triplet eighth = 3 sixteenths.
@@ -24,7 +21,7 @@ const TRIPLET_NOTE_DURATION: Record<DurationName, DurationName> = {
 function parseDynamicString(raw: string): Dynamic | null {
   if (raw.endsWith('<')) return 'cresc'
   if (raw.endsWith('>')) return 'decresc'
-  if (VALID_DYNAMICS.has(raw)) return raw as Dynamic
+  if (VALID_DYNAMIC_NAMES.has(raw)) return raw as Dynamic
   return null
 }
 
@@ -181,36 +178,6 @@ function makeBarlineNode(): NoteNode {
   }
 }
 
-/**
- * Validate a NOTE token for invalid pitch or duration before parsing.
- * The tokenizer catches unknown characters, but we need to validate
- * duration characters that appear after ':'.
- */
-function validateNoteToken(token: Token, input: string): void {
-  const raw = token.raw
-  const firstChar = raw[0]
-
-  // Check for invalid pitch (letter that's not A-G or R)
-  if (firstChar !== 'R' && !VALID_PITCHES.has(firstChar)) {
-    throw new MaestroError(
-      `"${firstChar}" is not a valid note name. Valid notes are: C D E F G A B`,
-      input,
-      token.position,
-      raw.length
-    )
-  }
-
-  // Check for invalid duration character after ':'
-  const durMatch = raw.match(/:([a-z])/)
-  if (durMatch && !VALID_DURATIONS.has(durMatch[1])) {
-    throw new MaestroError(
-      `"${durMatch[1]}" is not a valid duration. Valid durations are: w h q e s t`,
-      input,
-      token.position,
-      raw.length
-    )
-  }
-}
 
 export function parse(input: string): NoteNode[] {
   const tokens = tokenize(input)
@@ -222,7 +189,6 @@ export function parse(input: string): NoteNode[] {
 
     switch (token.type) {
       case 'NOTE': {
-        validateNoteToken(token, input)
         const node = parseNoteRaw(token.raw, input, token.position)
         nodes.push(node)
         break

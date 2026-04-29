@@ -34,5 +34,4 @@ export interface NoteNode {
 
 export interface ValidationError {
   message: string
-  position?: number
 }

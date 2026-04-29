@@ -270,6 +270,17 @@ describe('parse — barlines', () => {
   })
 })
 
+describe('parse — slur with nested dynamic', () => {
+  it('parses slur with inline dynamic on first note', () => {
+    const nodes = parse('(C4:q(mp) D4:q)')
+    expect(nodes).toHaveLength(2)
+    expect(nodes[0].slurred).toBe(true)
+    expect(nodes[1].slurred).toBe(true)
+    expect(nodes[0].dynamic).toBe('mp')
+    expect(nodes[1].dynamic).toBeNull()
+  })
+})
+
 describe('parse — error cases', () => {
   it('throws MaestroError for invalid pitch name H4', () => {
     expect(() => parse('H4:q')).toThrow(MaestroError)

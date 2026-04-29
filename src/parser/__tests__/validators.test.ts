@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { validate } from '../validators.js'
+import { parse } from '../parser.js'
 import { NoteNode } from '../types.js'
 
 function makeNode(overrides: Partial<NoteNode> = {}): NoteNode {
@@ -140,6 +141,23 @@ describe('validate — time signature', () => {
       makeNode({ duration: 'q' }),
     ]
     const errors = validate(nodes, '4/4')
+    expect(errors).toHaveLength(0)
+  })
+})
+
+describe('validate — chord beat counting', () => {
+  it('counts a 4-chord measure as exactly 4 beats in 4/4', () => {
+    const errors = validate(parse('[C4 E4 G4]:q [D4 F4 A4]:q [E4 G4 B4]:q [F4 A4 C5]:q'), '4/4')
+    expect(errors).toHaveLength(0)
+  })
+})
+
+describe('validate — triplet beat counting', () => {
+  it('counts 4 triplet groups as exactly 4 beats in 4/4', () => {
+    const errors = validate(
+      parse('{C4 D4 E4}:q {F4 G4 A4}:q {B4 C5 D5}:q {E5 F5 G5}:q'),
+      '4/4'
+    )
     expect(errors).toHaveLength(0)
   })
 })

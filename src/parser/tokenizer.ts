@@ -50,14 +50,11 @@ export function tokenize(input: string): Token[] {
       }
       // After ']', optionally consume :duration[.]
       let j = end + 1
-      let durStr = ''
       if (input[j] === ':') {
         j++ // skip ':'
         if (j < input.length && /[whqest]/.test(input[j])) {
-          durStr += input[j]
           j++
           if (j < input.length && input[j] === '.') {
-            durStr += '.'
             j++
           }
         }
@@ -76,14 +73,11 @@ export function tokenize(input: string): Token[] {
         throw new MaestroError('Unclosed triplet bracket "{".', input, i, 1)
       }
       let j = end + 1
-      let durStr = ''
       if (input[j] === ':') {
         j++ // skip ':'
         if (j < input.length && /[whqest]/.test(input[j])) {
-          durStr += input[j]
           j++
           if (j < input.length && input[j] === '.') {
-            durStr += '.'
             j++
           }
         }
@@ -97,13 +91,21 @@ export function tokenize(input: string): Token[] {
     // Slur: (...) — only when ( is followed by a note
     if (input[i] === '(' && isSlurStart(input, i)) {
       const start = i
-      const end = input.indexOf(')', i)
-      if (end === -1) {
-        throw new MaestroError('Unclosed slur parenthesis "(".', input, i, 1)
+      // Find matching close paren using depth counter to handle nested parens
+      let depth = 1
+      let j = start + 1
+      while (j < input.length && depth > 0) {
+        if (input[j] === '(') depth++
+        if (input[j] === ')') depth--
+        if (depth > 0) j++
+        else break
       }
-      const raw = input.slice(start, end + 1)
+      if (depth !== 0) {
+        throw new MaestroError('Unclosed slur parenthesis "(".', input, start, 1)
+      }
+      const raw = input.slice(start, j + 1)
       tokens.push({ type: 'SLUR', raw, position: start })
-      i = end + 1
+      i = j + 1
       continue
     }
 

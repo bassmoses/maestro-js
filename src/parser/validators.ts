@@ -1,8 +1,9 @@
 import type { NoteNode, ValidationError, DurationName } from './types.js'
+import { VALID_PITCH_NAMES, VALID_DURATION_CHARS, VALID_DYNAMIC_NAMES } from './constants.js'
 
-const VALID_PITCHES = new Set(['C', 'D', 'E', 'F', 'G', 'A', 'B'])
-const VALID_DURATIONS = new Set<string>(['w', 'h', 'q', 'e', 's', 't'])
-const VALID_DYNAMICS = new Set<string>(['ppp', 'pp', 'p', 'mp', 'mf', 'f', 'ff', 'fff', 'cresc', 'decresc'])
+const VALID_PITCHES = VALID_PITCH_NAMES
+const VALID_DURATIONS = VALID_DURATION_CHARS
+const VALID_DYNAMICS = VALID_DYNAMIC_NAMES
 
 const DURATION_BEATS: Record<DurationName, number> = {
   w: 4,
@@ -102,10 +103,37 @@ export function validate(nodes: NoteNode[], timeSignature?: string): ValidationE
         const measure = measures[m]
         if (measure.length === 0) continue
 
-        // For chords: only count one note per chord group (they sound simultaneously)
-        // For triplets: they take the container duration collectively
-        // Simple approach: sum all beats, chord notes count individually in this model
-        const totalBeats = measure.reduce((sum, node) => sum + nodeBeats(node), 0)
+        // Count beats correctly:
+        // - Chord notes after the first in each group are skipped (they sound simultaneously)
+        // - Triplet notes are counted as their raw beats * (2/3) per group
+        let totalBeats = 0
+        let inChord = false
+        const seenTripletGroups = new Set<number>()
+
+        for (const node of measure) {
+          if (node.isBarline) continue
+
+          if (node.triplet) {
+            const group = node.tripletGroup!
+            if (!seenTripletGroups.has(group)) {
+              // Collect all nodes in this triplet group and sum their beats * 2/3
+              const groupNodes = measure.filter(n => n.triplet && n.tripletGroup === group)
+              const rawBeats = groupNodes.reduce((s, n) => s + nodeBeats(n), 0)
+              totalBeats += rawBeats * (2 / 3)
+              seenTripletGroups.add(group)
+            }
+            inChord = false
+          } else if (node.chord) {
+            if (!inChord) {
+              totalBeats += nodeBeats(node)
+              inChord = true
+            }
+            // else: skip — same chord group sounds simultaneously
+          } else {
+            inChord = false
+            totalBeats += nodeBeats(node)
+          }
+        }
 
         const tolerance = 1e-9
         if (totalBeats > beatsPerMeasure + tolerance) {

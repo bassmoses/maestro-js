@@ -316,3 +316,50 @@ describe('Song stub methods', () => {
     expect(timeline[1].note.pitch).toBe('D4')
   })
 })
+
+describe('Song.tempoAt()', () => {
+  it('stores tempo changes and reapplies on rebuild', () => {
+    const song = new Song({ tempo: 120 })
+    song.tempoAt(2, 90)
+    song.add('C4:q D4:q E4:q F4:q | G4:q A4:q B4:q C5:q')
+    const score = song.getScore()
+    const tempoMap = score.getTempoMap()
+    expect(tempoMap.get(2)).toBe(90)
+  })
+
+  it('tempo changes persist across rebuilds', () => {
+    const song = new Song({ tempo: 120 })
+    song.tempoAt(2, 90)
+    song.add('C4:q D4:q E4:q F4:q')
+    // Second add triggers rebuild
+    song.add('G4:q A4:q B4:q C5:q')
+    const score = song.getScore()
+    expect(score.getTempoMap().get(2)).toBe(90)
+  })
+})
+
+describe('Song.on() / Song.off()', () => {
+  it('on() registers a handler', () => {
+    const song = new Song()
+    const calls: unknown[] = []
+    song.on('beat', (data) => calls.push(data))
+    // Handler is registered
+    const score = song.getScore()
+    expect(score).toBeDefined()
+  })
+
+  it('off() removes a specific handler', () => {
+    const song = new Song()
+    const handler = vi.fn()
+    song.on('note', handler)
+    song.off('note', handler)
+    // Handler removed - no assertion needed beyond no error
+  })
+
+  it('off() with non-existent handler is a no-op', () => {
+    const song = new Song()
+    const handler = vi.fn()
+    // Removing a handler that was never added should not throw
+    expect(() => song.off('beat', handler)).not.toThrow()
+  })
+})

@@ -82,6 +82,15 @@ describe('beatsToSeconds', () => {
   it('0.5 beats at 60 bpm = 0.5 seconds', () => {
     expect(beatsToSeconds(0.5, 60)).toBe(0.5)
   })
+  it('throws on zero BPM', () => {
+    expect(() => beatsToSeconds(1, 0)).toThrow('Invalid BPM')
+  })
+  it('throws on negative BPM', () => {
+    expect(() => beatsToSeconds(1, -10)).toThrow('Invalid BPM')
+  })
+  it('throws on Infinity BPM', () => {
+    expect(() => beatsToSeconds(1, Infinity)).toThrow('Invalid BPM')
+  })
 })
 
 describe('parseDuration', () => {

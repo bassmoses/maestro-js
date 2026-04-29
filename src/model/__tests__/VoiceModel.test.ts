@@ -99,4 +99,26 @@ describe('VoiceModel', () => {
       expect(v.clef).toBe(clef)
     })
   })
+
+  it('auto-splits a chord note that overflows the measure', () => {
+    // Fill 3 beats of a 4/4 measure
+    for (let i = 0; i < 3; i++) {
+      voice.addNote(makeNote({ duration: 'q' }), TS_4_4)
+    }
+    // Add a chord whole note (4 beats) — overflows the remaining 1 beat
+    voice.addNote(makeNote({ duration: 'w', chord: true, chordGroup: 0 }), TS_4_4)
+    // Should split across measures
+    expect(voice.getMeasures().length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('chord continuation notes share time with first note', () => {
+    voice.addNote(makeNote({ duration: 'q', chord: true, chordGroup: 0 }), TS_4_4)
+    voice.addNote(makeNote({ pitch: 'E', duration: 'q', chord: true, chordGroup: 0 }), TS_4_4)
+    // Both chord notes in same group share time — only 1 beat consumed
+    const allNotes = voice.getAllNotes()
+    expect(allNotes).toHaveLength(2)
+    const measure = voice.getMeasures()[0]
+    // Measure should have 3 beats remaining (1 consumed by chord)
+    expect(measure.beatsRemaining).toBeCloseTo(3)
+  })
 })

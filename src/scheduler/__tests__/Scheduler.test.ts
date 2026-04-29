@@ -278,4 +278,61 @@ describe('Scheduler.buildTimeline', () => {
       expect(timeline[7].time).toBeCloseTo(3.5)
     })
   })
+
+  describe('repeat sections', () => {
+    it('repeats unroll measures correctly', () => {
+      const score = buildScore(parse('C4:q D4:q E4:q F4:q | G4:q A4:q B4:q C5:q'), { tempo: 120 })
+      score.addRepeatSection(1, 2) // repeat both measures
+      const timeline = Scheduler.buildTimeline(score)
+      // 2 measures × 4 notes = 8, then repeat = 8 more = 16 total
+      expect(timeline).toHaveLength(16)
+    })
+
+    it('repeat section replays notes at correct times', () => {
+      const score = buildScore(parse('C4:q D4:q E4:q F4:q'), { tempo: 120 })
+      score.addRepeatSection(1, 1) // repeat measure 1
+      const timeline = Scheduler.buildTimeline(score)
+      // 4 original + 4 repeated = 8
+      expect(timeline).toHaveLength(8)
+      // Repeated notes start after the first pass (2s at 120 BPM for 4 quarters)
+      expect(timeline[4].time).toBeCloseTo(2.0)
+    })
+  })
+
+  describe('da capo', () => {
+    it('da capo replays all measures from the start', () => {
+      const score = buildScore(parse('C4:q D4:q E4:q F4:q | G4:q A4:q B4:q C5:q'), { tempo: 120 })
+      score.setDaCapo(true)
+      const timeline = Scheduler.buildTimeline(score)
+      // 8 notes × 2 (play + da capo) = 16
+      expect(timeline).toHaveLength(16)
+    })
+
+    it('da capo notes have correct timing after replay', () => {
+      const score = buildScore(parse('C4:q D4:q E4:q F4:q'), { tempo: 120 })
+      score.setDaCapo(true)
+      const timeline = Scheduler.buildTimeline(score)
+      // 4 original + 4 da capo = 8
+      expect(timeline).toHaveLength(8)
+      // Da capo replay starts at 2s (after first pass of 4 quarters at 120 BPM)
+      expect(timeline[4].time).toBeCloseTo(2.0)
+    })
+  })
+
+  describe('mergeTies', () => {
+    it('merges consecutive tied notes into one', () => {
+      const score = buildScore(parse('C4:q~ C4:q'), { tempo: 120 })
+      const rawTimeline = Scheduler.buildTimeline(score)
+      const merged = Scheduler.mergeTies(rawTimeline)
+      // Two C4 quarters tied → one event with combined duration
+      expect(merged).toHaveLength(1)
+      expect(merged[0].note.duration).toBeCloseTo(1.0) // 0.5 + 0.5 at 120 BPM
+    })
+
+    it('preserves non-tied notes', () => {
+      const score = buildScore(parse('C4:q D4:q'), { tempo: 120 })
+      const merged = Scheduler.mergeTies(Scheduler.buildTimeline(score))
+      expect(merged).toHaveLength(2)
+    })
+  })
 })

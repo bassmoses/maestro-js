@@ -1,0 +1,28 @@
+# Source
+src/
+tests/
+__tests__/
+*.test.ts
+*.spec.ts
+
+# Config
+.github/
+.husky/
+.worktrees/
+.vscode/
+rollup.config.ts
+vitest.config.ts
+tsconfig.json
+eslint.config.js
+.prettierrc
+.gitignore
+.eslintignore
+
+# Dev artifacts
+coverage/
+node_modules/
+*.map
+
+# Misc
+maestro-js-plan.md
+examples/

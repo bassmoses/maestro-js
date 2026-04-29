@@ -3,32 +3,57 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Human-friendly music library — write, render, and play music with simple syntax",
+  "license": "MIT",
+  "author": "Moses Bass",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bassmoses/maestro-js.git"
+  },
+  "homepage": "https://github.com/bassmoses/maestro-js#readme",
+  "bugs": {
+    "url": "https://github.com/bassmoses/maestro-js/issues"
+  },
+  "keywords": [
+    "music",
+    "notation",
+    "midi",
+    "audio",
+    "composition",
+    "sheet-music",
+    "vexflow",
+    "tone"
+  ],
   "engines": {
     "node": ">=20"
   },
+  "sideEffects": false,
   "scripts": {
     "build": "rollup -c rollup.config.ts --configPlugin typescript",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build",
     "prepare": "husky"
   },
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/maestro.esm.js",
       "require": "./dist/maestro.cjs.js",
       "browser": "./dist/maestro.esm.js"
     },
     "./node": {
+      "types": "./dist/node/index.d.ts",
       "import": "./dist/maestro.node.esm.js"
     }
   },
   "main": "./dist/maestro.cjs.js",
   "module": "./dist/maestro.esm.js",
-  "types": "./dist/maestro.d.ts",
+  "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/__tests__"
   ],
   "devDependencies": {
     "@eslint/js": "^10.0.1",

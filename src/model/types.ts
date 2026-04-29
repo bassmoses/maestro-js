@@ -1,0 +1,20 @@
+export type PitchName = 'C' | 'D' | 'E' | 'F' | 'G' | 'A' | 'B'
+export type Accidental = '#' | 'b' | 'bb' | '##' | null
+export type Octave = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
+export type DurationName = 'w' | 'h' | 'q' | 'e' | 's' | 't'
+export type Dynamic = 'ppp' | 'pp' | 'p' | 'mp' | 'mf' | 'f' | 'ff' | 'fff' | 'cresc' | 'decresc'
+
+export interface NoteData {
+  pitch: PitchName | 'R' // R = rest
+  accidental: Accidental
+  octave: Octave
+  duration: DurationName
+  dotted: boolean
+  dynamic: Dynamic | null
+  tied: boolean
+  slurred: boolean
+  chord: boolean // part of a chord group
+  chordGroup?: number // distinguishes separate chord groups
+  fermata?: boolean // fermata hold
+  triplet?: boolean // part of a triplet group
+}

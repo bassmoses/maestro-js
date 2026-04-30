@@ -5,6 +5,8 @@ export interface RenderOptions {
   theme?: 'light' | 'dark'
   showDynamics?: boolean
   showBarNumbers?: boolean
+  showPartNames?: boolean
+  partNameStyle?: 'full' | 'abbreviated'
   grandStaff?: boolean
   padding?: number
 }
@@ -16,6 +18,8 @@ export const DEFAULT_RENDER_OPTIONS: Required<RenderOptions> = {
   theme: 'light',
   showDynamics: true,
   showBarNumbers: true,
+  showPartNames: true,
+  partNameStyle: 'abbreviated',
   grandStaff: false,
   padding: 20,
 }

@@ -28,6 +28,8 @@ export interface RenderOptions {
   showDynamics?: boolean
   grandStaff?: boolean
   showBarNumbers?: boolean
+  showPartNames?: boolean
+  partNameStyle?: 'full' | 'abbreviated'
 }
 
 export interface PlayOptions {
@@ -124,6 +126,20 @@ export class Song {
 
   // --- Stubs for future phases ---
 
+  /** Convert Song-level RenderOptions to internal renderer options, stripping undefined keys. */
+  private toRendererOptions(options?: RenderOptions): RendererRenderOptions {
+    if (!options) return {}
+    const opts: RendererRenderOptions = {}
+    if (options.width !== undefined) opts.width = options.width
+    if (options.theme !== undefined) opts.theme = options.theme
+    if (options.showDynamics !== undefined) opts.showDynamics = options.showDynamics
+    if (options.grandStaff !== undefined) opts.grandStaff = options.grandStaff
+    if (options.showBarNumbers !== undefined) opts.showBarNumbers = options.showBarNumbers
+    if (options.showPartNames !== undefined) opts.showPartNames = options.showPartNames
+    if (options.partNameStyle !== undefined) opts.partNameStyle = options.partNameStyle
+    return opts
+  }
+
   /** Render sheet music to a target element. */
   render(target: string | HTMLElement, options?: RenderOptions): this {
     const element =
@@ -137,14 +153,7 @@ export class Song {
       throw new Error(`Render target "${target}" not found.`)
     }
 
-    const renderOpts: RendererRenderOptions = {}
-    if (options?.width !== undefined) renderOpts.width = options.width
-    if (options?.theme !== undefined) renderOpts.theme = options.theme
-    if (options?.showDynamics !== undefined) renderOpts.showDynamics = options.showDynamics
-    if (options?.grandStaff !== undefined) renderOpts.grandStaff = options.grandStaff
-    if (options?.showBarNumbers !== undefined) renderOpts.showBarNumbers = options.showBarNumbers
-
-    VexFlowAdapter.render(this.score, element as HTMLElement, renderOpts)
+    VexFlowAdapter.render(this.score, element as HTMLElement, this.toRendererOptions(options))
     return this
   }
 
@@ -185,14 +194,7 @@ export class Song {
 
   /** Export as SVG string. */
   exportSVG(options?: RenderOptions): string {
-    const renderOpts: RendererRenderOptions = {}
-    if (options?.width !== undefined) renderOpts.width = options.width
-    if (options?.theme !== undefined) renderOpts.theme = options.theme
-    if (options?.showDynamics !== undefined) renderOpts.showDynamics = options.showDynamics
-    if (options?.grandStaff !== undefined) renderOpts.grandStaff = options.grandStaff
-    if (options?.showBarNumbers !== undefined) renderOpts.showBarNumbers = options.showBarNumbers
-
-    const result = VexFlowAdapter.renderToSVG(this.score, renderOpts)
+    const result = VexFlowAdapter.renderToSVG(this.score, this.toRendererOptions(options))
     return result.svg
   }
 

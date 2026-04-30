@@ -1,6 +1,6 @@
 {
   "name": "@bassmoses/maestro-js",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "Human-friendly music library — write, render, and play music with simple syntax",
   "license": "MIT",

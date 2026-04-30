@@ -407,7 +407,26 @@ function renderAllVoices(
         }
       }
 
+      // Save context state before drawing to prevent leakage between staves
+      context.save()
+      context.setFillStyle(theme.foreground)
+      context.setStrokeStyle(theme.staveColor)
+
       stave.setContext(context).draw()
+
+      // Render part name label to the left of the stave
+      if (opts.showPartNames && isFirstLine && voiceLayout.voiceName) {
+        const label =
+          opts.partNameStyle === 'abbreviated'
+            ? voiceLayout.voiceName.charAt(0).toUpperCase()
+            : voiceLayout.voiceName
+        context.save()
+        context.setFont('serif', 14, 'bold')
+        context.setFillStyle(theme.foreground)
+        const labelWidth = context.measureText(label).width
+        context.fillText(label, staveX - labelWidth - 6, line.y + 22)
+        context.restore()
+      }
 
       // Track stave for grand staff connectors
       if (!stavesByLine.has(li)) stavesByLine.set(li, [])
@@ -427,8 +446,15 @@ function renderAllVoices(
         vi,
         line.measureStartIndex
       )
+
+      // Restore context state so next stave gets clean fill/stroke
+      context.restore()
     }
   }
+
+  // Reset context for ties, slurs, and connectors
+  context.setFillStyle(theme.foreground)
+  context.setStrokeStyle(theme.foreground)
 
   // Draw ties — each entry is a pre-computed pair
   for (const tieEntry of tieQueue) {

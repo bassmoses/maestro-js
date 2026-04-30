@@ -8,6 +8,9 @@ import { VexFlowAdapter } from '../adapters/renderer/VexFlowAdapter.js'
 import type { RenderOptions as RendererRenderOptions } from '../adapters/renderer/types.js'
 import type { ToneAdapter } from '../adapters/audio/ToneAdapter.js'
 import { midiToPitch, pitchToMidi } from '../model/Pitch.js'
+import { durationToDenom } from '../model/Duration.js'
+import { nodeToNote } from '../model/converter.js'
+import type { NoteNode } from '../parser/types.js'
 import type { PitchName, Accidental, Octave } from '../model/types.js'
 
 export interface SongOptions {
@@ -48,6 +51,7 @@ export class Song {
   private eventHandlers: Map<SongEventType, SongEventHandler[]> = new Map()
   private audioAdapter: ToneAdapter | null = null
   private tempoChanges: Array<{ measure: number; bpm: number }> = []
+  private loopSettings: { startMeasure: number; endMeasure: number } | null = null
 
   constructor(options?: SongOptions) {
     this.options = {
@@ -249,6 +253,30 @@ export class Song {
     return song
   }
 
+  /** Export as ScoreJSON — a portable format for storage and exchange. */
+  async exportScoreJSON(): Promise<import('../adapters/export/ScoreJSONAdapter.js').ScoreJSON> {
+    const { ScoreJSONAdapter } = await import('../adapters/export/ScoreJSONAdapter.js')
+    return ScoreJSONAdapter.toJSON(this.score)
+  }
+
+  /** Load from a ScoreJSON object. Returns a new Song backed by the imported Score. */
+  static async fromScoreJSON(
+    json: import('../adapters/export/ScoreJSONAdapter.js').ScoreJSON
+  ): Promise<Song> {
+    const { ScoreJSONAdapter } = await import('../adapters/export/ScoreJSONAdapter.js')
+    const score = ScoreJSONAdapter.fromJSON(json)
+    const song = new Song({
+      tempo: score.tempo,
+      timeSignature: `${score.timeSignature.beats}/${durationToDenom(score.timeSignature.noteValue)}`,
+      key: score.key,
+      title: score.title,
+      composer: score.composer,
+    })
+    // Replace the internally built score with the imported one
+    song.score = score
+    return song
+  }
+
   /** Export as PNG buffer (requires `sharp` package: npm install sharp). */
   async exportPNG(options?: RenderOptions): Promise<Uint8Array> {
     const svg = this.exportSVG(options)
@@ -283,6 +311,25 @@ export class Song {
   tempoAt(measure: number, bpm: number): this {
     this.tempoChanges.push({ measure, bpm })
     this.score.tempoAt(measure, bpm)
+    return this
+  }
+
+  /**
+   * Set a loop range for playback. The specified measures will repeat
+   * indefinitely until stop() is called or clearLoop() removes the loop.
+   * @param startMeasure 1-based start measure (inclusive)
+   * @param endMeasure 1-based end measure (inclusive)
+   */
+  loop(startMeasure: number, endMeasure: number): this {
+    this.loopSettings = { startMeasure, endMeasure }
+    this.score.setLoop(startMeasure, endMeasure)
+    return this
+  }
+
+  /** Clear any active loop. */
+  clearLoop(): this {
+    this.loopSettings = null
+    this.score.clearLoop()
     return this
   }
 
@@ -327,6 +374,11 @@ export class Song {
     // Re-apply stored tempo changes
     for (const { measure, bpm } of this.tempoChanges) {
       this.score.tempoAt(measure, bpm)
+    }
+
+    // Re-apply stored loop
+    if (this.loopSettings) {
+      this.score.setLoop(this.loopSettings.startMeasure, this.loopSettings.endMeasure)
     }
 
     // Build default voice from add() calls
@@ -393,27 +445,6 @@ export class Song {
       composer: this.options.composer,
     }
   }
-}
-
-// Avoid circular dep — inline the conversion
-import { Note } from '../model/Note.js'
-import type { NoteNode } from '../parser/types.js'
-import type { NoteData } from '../model/types.js'
-
-function nodeToNote(node: NoteNode): Note {
-  const data: NoteData = {
-    pitch: node.pitch ?? 'R',
-    accidental: node.accidental,
-    octave: node.octave ?? 4,
-    duration: node.duration,
-    dotted: node.dotted,
-    dynamic: node.dynamic,
-    tied: node.tied,
-    slurred: node.slurred,
-    chord: node.chord,
-    fermata: node.fermata,
-  }
-  return new Note(data)
 }
 
 // Regex to match a single pitch token within a notation string (e.g. C#4, Bb3, G5)

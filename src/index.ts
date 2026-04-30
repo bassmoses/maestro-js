@@ -25,11 +25,16 @@ export type { InstrumentConfig, InstrumentName } from './adapters/audio/instrume
 
 // Internal model (for advanced users)
 export { Score } from './model/Score.js'
+export type { LoopRange, RepeatSection } from './model/Score.js'
 export { Note } from './model/Note.js'
 export { Part } from './model/Part.js'
 export { Measure } from './model/Measure.js'
 export { VoiceModel } from './model/VoiceModel.js'
 export type * from './model/types.js'
-export { buildScore } from './model/converter.js'
+export { buildScore, nodeToNote } from './model/converter.js'
 export { Scheduler } from './scheduler/Scheduler.js'
 export type { Timeline, TimelineEvent, NoteEvent, BeatEvent } from './scheduler/timeline.js'
+
+// Export adapters
+export { ScoreJSONAdapter } from './adapters/export/ScoreJSONAdapter.js'
+export type { ScoreJSON } from './adapters/export/ScoreJSONAdapter.js'

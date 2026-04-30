@@ -21,6 +21,7 @@ import type { Score } from '../../model/Score.js'
 import type { Note } from '../../model/Note.js'
 import type { Measure } from '../../model/Measure.js'
 import type { DurationName, Dynamic } from '../../model/types.js'
+import { durationToDenom } from '../../model/Duration.js'
 import type { RenderOptions, ThemeColors } from './types.js'
 import { DEFAULT_RENDER_OPTIONS, THEMES } from './types.js'
 import { buildScoreLayout, type VoiceLayout } from './StaveBuilder.js'
@@ -95,6 +96,7 @@ interface RenderNote {
   isRest: boolean
   chordGroup?: number
   fermata: boolean
+  lyric?: string
   sourceNotes: Note[]
 }
 
@@ -127,6 +129,7 @@ function groupNotesForRender(notes: readonly Note[]): RenderNote[] {
           isRest: false,
           chordGroup: note.chordGroup,
           fermata: note.fermata,
+          lyric: note.lyric,
           sourceNotes: [note],
         }
       }
@@ -148,6 +151,7 @@ function groupNotesForRender(notes: readonly Note[]): RenderNote[] {
         dotted: note.dotted,
         isRest: note.isRest,
         fermata: note.fermata,
+        lyric: note.lyric,
         sourceNotes: [note],
       })
     }
@@ -155,32 +159,6 @@ function groupNotesForRender(notes: readonly Note[]): RenderNote[] {
 
   if (currentChord) result.push(currentChord)
   return result
-}
-
-/**
- * Create VexFlow StaveNote objects from grouped render notes.
- */
-function _createStaveNotes(renderNotes: RenderNote[]): StaveNote[] {
-  return renderNotes.map((rn) => {
-    const staveNote = new StaveNote({
-      keys: rn.keys,
-      duration: rn.duration,
-    })
-
-    // Add accidentals
-    rn.accidentals.forEach((acc, idx) => {
-      if (acc) {
-        staveNote.addModifier(new VexAccidental(acc), idx)
-      }
-    })
-
-    // Add dots for dotted notes
-    if (rn.dotted) {
-      Dot.buildAndAttach([staveNote])
-    }
-
-    return staveNote
-  })
 }
 
 export interface RenderedScore {
@@ -402,7 +380,7 @@ function renderAllVoices(
       if (isFirstLine) {
         stave.addClef(clef === 'treble-8' ? 'treble' : clef)
         stave.addTimeSignature(
-          `${score.timeSignature.beats}/${timeSignatureNoteValueToDenom(score.timeSignature.noteValue)}`
+          `${score.timeSignature.beats}/${durationToDenom(score.timeSignature.noteValue)}`
         )
 
         // Add tempo marking on first voice only
@@ -573,7 +551,7 @@ function renderMeasuresOnStave(
 
   // Create VexFlow Voice and add notes
   const totalBeats = measures.reduce((sum, m) => sum + m.totalBeats, 0)
-  const beatValue = timeSignatureNoteValueToDenom(measures[0]?.timeSignature.noteValue ?? 'q')
+  const beatValue = durationToDenom(measures[0]?.timeSignature.noteValue ?? 'q')
 
   const vexVoice = new VexVoice({
     numBeats: totalBeats,
@@ -622,6 +600,14 @@ function createVexStaveNotes(
     // Add fermata articulation above note
     if (rn.fermata) {
       staveNote.addModifier(new Articulation('a@a').setPosition(3), 0)
+    }
+
+    // Add lyric text below note
+    if (rn.lyric) {
+      const lyricAnnotation = new Annotation(rn.lyric).setVerticalJustification(
+        Annotation.VerticalJustify.BOTTOM
+      )
+      staveNote.addModifier(lyricAnnotation, 0)
     }
 
     return staveNote
@@ -684,18 +670,6 @@ function drawBeams(
       // VexFlow may reject some beam configurations — skip silently
     }
   }
-}
-
-function timeSignatureNoteValueToDenom(noteValue: DurationName): string {
-  const map: Record<DurationName, string> = {
-    w: '1',
-    h: '2',
-    q: '4',
-    e: '8',
-    s: '16',
-    t: '32',
-  }
-  return map[noteValue] ?? '4'
 }
 
 // Re-export for use in tests

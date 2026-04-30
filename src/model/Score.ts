@@ -26,6 +26,11 @@ export interface RepeatSection {
   endMeasure: number // 1-based, inclusive
 }
 
+export interface LoopRange {
+  startMeasure: number // 1-based
+  endMeasure: number // 1-based, inclusive
+}
+
 export class Score {
   readonly tempo: number
   readonly timeSignature: TimeSignature
@@ -36,6 +41,7 @@ export class Score {
   private tempoMap: Map<number, number> = new Map() // measure number → BPM
   private repeatSections: RepeatSection[] = []
   private hasDaCapo: boolean = false
+  private loopRange: LoopRange | null = null
 
   constructor(options?: Partial<ScoreOptions>) {
     this.tempo = options?.tempo ?? 120
@@ -143,5 +149,35 @@ export class Score {
    */
   getDaCapo(): boolean {
     return this.hasDaCapo
+  }
+
+  /**
+   * Set a loop range (measures to repeat indefinitely during playback).
+   * Pass null to clear the loop.
+   */
+  setLoop(startMeasure: number, endMeasure: number): this {
+    if (startMeasure < 1 || endMeasure < 1) {
+      throw new Error(`Loop measures must be >= 1. Got start=${startMeasure}, end=${endMeasure}`)
+    }
+    if (endMeasure < startMeasure) {
+      throw new Error(`Loop endMeasure (${endMeasure}) must be >= startMeasure (${startMeasure})`)
+    }
+    this.loopRange = { startMeasure, endMeasure }
+    return this
+  }
+
+  /**
+   * Clear any active loop.
+   */
+  clearLoop(): this {
+    this.loopRange = null
+    return this
+  }
+
+  /**
+   * Get the current loop range, or null if no loop is set.
+   */
+  getLoop(): LoopRange | null {
+    return this.loopRange
   }
 }

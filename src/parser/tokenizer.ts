@@ -1,9 +1,10 @@
 import type { Token } from './types.js'
 import { MaestroError, suggestPitch } from './errors.js'
 
-// Matches a single note token: pitch (or R for rest), optional accidental, optional octave, optional :duration[.], optional inline dynamic
-// e.g. C4:q, D#5:h., Bb3:e, R:q, C4:q(mp), C4:q(p<), C4, R:q (rest has no octave)
-const NOTE_PATTERN = /^([A-GR])(##|bb|#|b)?([0-8])?(?::([whqest])(\.)?)?(?:\(([^)]+)\))?/
+// Matches a single note token: pitch (or R for rest), optional accidental, optional octave, optional :duration[.], optional inline dynamic, optional "lyric"
+// e.g. C4:q, D#5:h., Bb3:e, R:q, C4:q(mp), C4:q(p<), C4, R:q (rest has no octave), C4:q"hello"
+const NOTE_PATTERN =
+  /^([A-GR])(##|bb|#|b)?([0-8])?(?::([whqest])(\.)?)?(?:\(([^)]+)\))?(?:"([^"]*)")?/
 
 /**
  * Determine if a `(` at position `pos` in `input` starts a SLUR (not a dynamic).
@@ -84,6 +85,13 @@ export function tokenize(input: string): Token[] {
         const dynEnd = input.indexOf(')', j)
         if (dynEnd !== -1) {
           j = dynEnd + 1
+        }
+      }
+      // Optionally consume lyric: "text"
+      if (j < input.length && input[j] === '"') {
+        const lyricEnd = input.indexOf('"', j + 1)
+        if (lyricEnd !== -1) {
+          j = lyricEnd + 1
         }
       }
       const raw = input.slice(start, j)

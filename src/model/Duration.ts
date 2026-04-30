@@ -44,3 +44,20 @@ export function parseDuration(str: string): { duration: DurationName; dotted: bo
 
   return { duration: base as DurationName, dotted }
 }
+
+/**
+ * Map a DurationName to its time-signature denominator string.
+ * e.g. 'q' → '4', 'h' → '2', 'e' → '8'.
+ */
+const DENOM_MAP: Record<DurationName, string> = {
+  w: '1',
+  h: '2',
+  q: '4',
+  e: '8',
+  s: '16',
+  t: '32',
+}
+
+export function durationToDenom(noteValue: DurationName): string {
+  return DENOM_MAP[noteValue] ?? '4'
+}

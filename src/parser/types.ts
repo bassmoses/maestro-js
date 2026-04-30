@@ -38,6 +38,7 @@ export interface NoteNode {
   repeatStart?: boolean // |: marker
   repeatEnd?: boolean // :| marker
   daCapo?: boolean // D.C. marker
+  lyric?: string // lyrics text attached to this note
 }
 
 export interface ValidationError {

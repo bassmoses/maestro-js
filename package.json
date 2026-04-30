@@ -1,6 +1,6 @@
 {
-  "name": "maestro-js",
-  "version": "0.1.0",
+  "name": "@bassmoses/maestro-js",
+  "version": "0.2.0",
   "type": "module",
   "description": "Human-friendly music library — write, render, and play music with simple syntax",
   "license": "MIT",
@@ -34,7 +34,10 @@
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build",
-    "prepare": "husky"
+    "prepare": "husky",
+    "release": "npm version patch && npm publish",
+    "release:minor": "npm version minor && npm publish",
+    "release:major": "npm version major && npm publish"
   },
   "exports": {
     ".": {
@@ -51,12 +54,18 @@
   "main": "./dist/maestro.cjs.js",
   "module": "./dist/maestro.esm.js",
   "types": "./dist/index.d.ts",
+  "unpkg": "./dist/maestro.umd.min.js",
+  "jsdelivr": "./dist/maestro.umd.min.js",
   "files": [
     "dist",
     "!dist/**/__tests__"
   ],
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@rollup/plugin-commonjs": "^29.0.2",
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@rollup/plugin-terser": "^1.0.0",
     "@rollup/plugin-typescript": "^12.3.0",
     "@types/jsdom": "^28.0.1",
     "@typescript-eslint/eslint-plugin": "^8.59.1",

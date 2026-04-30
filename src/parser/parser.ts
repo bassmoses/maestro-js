@@ -43,13 +43,15 @@ function parseNoteRaw(
   position: number,
   defaults: { slurred?: boolean; chord?: boolean; triplet?: boolean; tripletGroup?: number } = {}
 ): NoteNode {
-  // Regex: pitch (or R), optional accidental, optional octave, optional :duration[.], optional inline dynamic
-  const match = raw.match(/^([A-GR])(##|bb|#|b)?([0-8])?(?::([whqest])(\.)?)?(?:\(([^)]+)\))?$/)
+  // Regex: pitch (or R), optional accidental, optional octave, optional :duration[.], optional inline dynamic, optional "lyric"
+  const match = raw.match(
+    /^([A-GR])(##|bb|#|b)?([0-8])?(?::([whqest])(\.)?)?(?:\(([^)]+)\))?(?:"([^"]*)")?$/
+  )
   if (!match) {
     throw new MaestroError(`Invalid note syntax: "${raw}"`, input, position, raw.length)
   }
 
-  const [, pitchRaw, accidentalRaw, octaveRaw, durRaw, dotRaw, dynRaw] = match
+  const [, pitchRaw, accidentalRaw, octaveRaw, durRaw, dotRaw, dynRaw, lyricRaw] = match
 
   const isRest = pitchRaw === 'R'
   const pitch: PitchName | null = isRest ? null : (pitchRaw as PitchName)
@@ -88,6 +90,7 @@ function parseNoteRaw(
     triplet: defaults.triplet ?? false,
     tripletGroup: defaults.tripletGroup,
     fermata,
+    lyric: lyricRaw ?? undefined,
   }
 }
 
@@ -105,8 +108,12 @@ function parseChordToken(token: Token, input: string, chordGroup: number): NoteN
   const dynMatch = afterBracket.match(/\(([^)]+)\)/)
   const dynamic: Dynamic | null = dynMatch ? parseDynamicString(dynMatch[1]) : null
 
+  // Extract optional lyric: "text"
+  const lyricMatch = afterBracket.match(/"([^"]*)"/)
+  const lyric: string | undefined = lyricMatch ? lyricMatch[1] : undefined
+
   const noteStrs = inner.trim().split(/\s+/)
-  return noteStrs.map((noteStr) => {
+  return noteStrs.map((noteStr, idx) => {
     const noteMatch = noteStr.match(/^([A-G])(##|bb|#|b)?([0-8])?$/)
     if (!noteMatch) {
       throw new MaestroError(
@@ -133,6 +140,7 @@ function parseChordToken(token: Token, input: string, chordGroup: number): NoteN
       chordGroup,
       triplet: false,
       fermata: false,
+      lyric: idx === 0 ? lyric : undefined, // attach lyric to first chord note only
     }
   })
 }

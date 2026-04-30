@@ -291,7 +291,7 @@ describe('Song stub methods', () => {
     song.add('C4:q D4:q E4:q F4:q')
     // exportPNG calls exportSVG internally (slow jsdom init), then tries sharp
     await expect(song.exportPNG()).rejects.toThrow()
-  }, 15000)
+  }, 30000)
 
   it('transpose() shifts all notes by semitones', () => {
     const song = new Song()

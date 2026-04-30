@@ -20,9 +20,13 @@ export { Part } from '../model/Part.js'
 export { Measure } from '../model/Measure.js'
 export { VoiceModel } from '../model/VoiceModel.js'
 export type * from '../model/types.js'
-export { buildScore } from '../model/converter.js'
+export { buildScore, nodeToNote } from '../model/converter.js'
 export { Scheduler } from '../scheduler/Scheduler.js'
 export type { Timeline, TimelineEvent, NoteEvent, BeatEvent } from '../scheduler/timeline.js'
 
 // MIDI export
 export { MIDIAdapter } from '../adapters/export/MIDIAdapter.js'
+
+// ScoreJSON export/import
+export { ScoreJSONAdapter } from '../adapters/export/ScoreJSONAdapter.js'
+export type { ScoreJSON } from '../adapters/export/ScoreJSONAdapter.js'

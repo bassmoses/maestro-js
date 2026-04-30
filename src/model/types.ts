@@ -17,4 +17,5 @@ export interface NoteData {
   chordGroup?: number // distinguishes separate chord groups
   fermata?: boolean // fermata hold
   triplet?: boolean // part of a triplet group
+  lyric?: string // lyrics text attached to this note
 }

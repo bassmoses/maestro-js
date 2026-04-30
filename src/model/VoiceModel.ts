@@ -121,6 +121,7 @@ export class VoiceModel {
         chord: note.chord,
         chordGroup: note.chordGroup,
         fermata: note.fermata,
+        lyric: isFirst ? note.lyric : undefined,
       }
 
       const splitNote = new Note(splitData)

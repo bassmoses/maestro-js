@@ -121,12 +121,31 @@ export class ToneAdapter {
       this.scheduledIds.push(id)
     }
 
-    // Schedule end event
-    const totalDuration = this.getTotalDuration()
-    transport.schedule(() => {
-      this.emitEvent('end', { time: totalDuration })
-      this.stop()
-    }, totalDuration + 0.05) // small buffer after last note ends
+    // Configure loop if set on the score
+    const loopRange = this.score.getLoop()
+    if (loopRange) {
+      const loopStart = this.findTimeAtPosition(loopRange.startMeasure, 0)
+      const loopEndEvents = this.timeline.filter((e) => e.note.measure === loopRange.endMeasure)
+      const lastEventInLoop =
+        loopEndEvents.length > 0
+          ? Math.max(...loopEndEvents.map((e) => e.time + e.note.duration))
+          : this.getTotalDuration()
+
+      if (loopStart >= 0) {
+        transport.loop = true
+        transport.loopStart = loopStart
+        transport.loopEnd = lastEventInLoop + 0.05
+        transport.seconds = loopStart
+      }
+    } else {
+      transport.loop = false
+      // Schedule end event (only when not looping)
+      const totalDuration = this.getTotalDuration()
+      transport.schedule(() => {
+        this.emitEvent('end', { time: totalDuration })
+        this.stop()
+      }, totalDuration + 0.05) // small buffer after last note ends
+    }
 
     transport.start()
     this._isPlaying = true
@@ -149,6 +168,7 @@ export class ToneAdapter {
     const transport = Tone.getTransport()
     transport.stop()
     transport.cancel()
+    transport.loop = false
     this.scheduledIds = []
     this._isPlaying = false
     this._isPaused = false

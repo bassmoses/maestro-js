@@ -99,7 +99,9 @@ interface HairpinRun {
 
 /**
  * Find consecutive runs of cresc/decresc notes in a RenderNote array.
- * Returns index ranges (inclusive) for each hairpin run.
+ * Returns index ranges (inclusive on both ends) for each hairpin run.
+ * That is, `staveNotes[run.endIdx]` is the last note included in the run,
+ * not a one-past-the-end sentinel.
  * Pure function — no DOM dependency, fully unit-testable.
  */
 function collectHairpinRuns(renderNotes: RenderNote[]): HairpinRun[] {

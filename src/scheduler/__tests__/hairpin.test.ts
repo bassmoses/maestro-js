@@ -115,13 +115,31 @@ describe('Scheduler — hairpin velocity interpolation', () => {
   })
 
   describe('velocities are clamped to [16, 127]', () => {
-    it('cresc ending past fff is clamped to 127', () => {
-      // startVel=fff(127), endVel=f(96) default cresc end, but start is already 127
-      // runLength=1, t=0 → 127
-      const score = buildScore(parse('C4:q(fff) D4:q(p<)'))
+    // NOTE: The clamp Math.max(16, Math.min(127, rawVel)) in interpolateHairpins
+    // cannot actually be triggered through normal note syntax alone, because
+    // ppp=16 and fff=127 are the boundary values in DYNAMIC_VELOCITY and the
+    // interpolation always stays within [startVel, endVel] ⊆ [16, 127].
+    // Articulation velocity deltas are applied during timeline construction and
+    // are later overwritten by the hairpin post-process, so they cannot push a
+    // hairpin note out of range either.
+    //
+    // Instead of a vacuous bounds check, we assert the exact formula output for
+    // a cresc spanning the widest practical range (ppp→fff) to verify that the
+    // interpolation arithmetic is correct and the clamp doesn't accidentally
+    // truncate a legitimate in-range value.
+    it('cresc from ppp to fff interpolates exact velocities across the full dynamic range', () => {
+      // startVel=ppp(16), endVel=fff(127)
+      // Four cresc notes: k=0..3, t = 0/3, 1/3, 2/3, 3/3
+      // rawVel = round(16 + (127-16)*t) = 16, 53, 90, 127
+      const score = buildScore(
+        parse('C4:q(ppp) C4:q(ppp<) D4:q(ppp<) E4:q(ppp<) F4:q(ppp<) G4:q(fff)')
+      )
       const timeline = Scheduler.buildTimeline(score)
-      expect(timeline[1].note.velocity).toBeGreaterThanOrEqual(16)
-      expect(timeline[1].note.velocity).toBeLessThanOrEqual(127)
+      const crescNotes = timeline.slice(1, 5)
+      expect(crescNotes[0].note.velocity).toBe(16)
+      expect(crescNotes[1].note.velocity).toBe(53)
+      expect(crescNotes[2].note.velocity).toBe(90)
+      expect(crescNotes[3].note.velocity).toBe(127)
     })
   })
 

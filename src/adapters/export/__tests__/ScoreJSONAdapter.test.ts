@@ -138,4 +138,74 @@ describe('ScoreJSONAdapter', () => {
       expect(() => ScoreJSONAdapter.fromJSON(badJson)).toThrow('Unsupported ScoreJSON version')
     })
   })
+
+  describe('Phase 3 fields round-trip', () => {
+    it('round-trips breath flag', () => {
+      const score = new Score()
+      const part = score.addPart('default')
+      const voice = part.addVoice('melody', 'treble')
+
+      voice.addNote(
+        makeNote({ pitch: 'C', octave: 4, duration: 'q', breath: true }),
+        score.timeSignature
+      )
+      voice.addNote(
+        makeNote({ pitch: 'D', octave: 4, duration: 'q', breath: false }),
+        score.timeSignature
+      )
+
+      const json = ScoreJSONAdapter.toJSON(score)
+      const restored = ScoreJSONAdapter.fromJSON(json)
+
+      const notes = restored.getParts()[0].getVoices()[0].getMeasures()[0].getNotes()
+      expect(notes[0].breath).toBe(true)
+      expect(notes[1].breath).toBe(false)
+    })
+
+    it('round-trips expression text', () => {
+      const score = new Score()
+      const part = score.addPart('default')
+      const voice = part.addVoice('melody', 'treble')
+
+      voice.addNote(
+        makeNote({ pitch: 'E', octave: 4, duration: 'q', expression: 'soli' }),
+        score.timeSignature
+      )
+      voice.addNote(
+        makeNote({ pitch: 'F', octave: 4, duration: 'q', expression: 'tutti' }),
+        score.timeSignature
+      )
+
+      const json = ScoreJSONAdapter.toJSON(score)
+      const restored = ScoreJSONAdapter.fromJSON(json)
+
+      const notes = restored.getParts()[0].getVoices()[0].getMeasures()[0].getNotes()
+      expect(notes[0].expression).toBe('soli')
+      expect(notes[1].expression).toBe('tutti')
+    })
+
+    it('round-trips rehearsalMark on measure', () => {
+      const score = new Score({ timeSignature: '4/4' })
+      const part = score.addPart('default')
+      const voice = part.addVoice('melody', 'treble')
+
+      // Fill first measure (4 quarter notes)
+      voice.addNote(makeNote({ pitch: 'C', octave: 4, duration: 'q' }), score.timeSignature)
+      voice.addNote(makeNote({ pitch: 'D', octave: 4, duration: 'q' }), score.timeSignature)
+      voice.addNote(makeNote({ pitch: 'E', octave: 4, duration: 'q' }), score.timeSignature)
+      voice.addNote(makeNote({ pitch: 'F', octave: 4, duration: 'q' }), score.timeSignature)
+
+      // Set rehearsal mark for measure 2
+      voice.setPendingRehearsalMark('A')
+      voice.addNote(makeNote({ pitch: 'G', octave: 4, duration: 'q' }), score.timeSignature)
+
+      const json = ScoreJSONAdapter.toJSON(score)
+      const restored = ScoreJSONAdapter.fromJSON(json)
+
+      const measures = restored.getParts()[0].getVoices()[0].getMeasures()
+      expect(measures).toHaveLength(2)
+      expect(measures[0].rehearsalMark).toBeNull()
+      expect(measures[1].rehearsalMark).toBe('A')
+    })
+  })
 })

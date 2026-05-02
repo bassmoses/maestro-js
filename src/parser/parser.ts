@@ -316,6 +316,7 @@ export function parse(input: string): NoteNode[] {
         // Extract inner content: {soli} -> 'soli'
         const text = token.raw.slice(1, -1)
         // Attach the expression to the last non-barline note
+        // Expression text with no preceding note is silently ignored
         for (let j = nodes.length - 1; j >= 0; j--) {
           if (!nodes[j].isBarline) {
             nodes[j] = { ...nodes[j], expression: text }

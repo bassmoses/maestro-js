@@ -76,7 +76,10 @@ export function tokenize(input: string): Token[] {
       // A rehearsal mark: 1–3 chars, no spaces, no note-letter+digit pattern.
       // Chord inners always contain a note letter (A-G) directly followed by a digit (octave).
       // Rehearsal marks may be all-letters ([A], [B]) or all-digits ([1], [12]).
-      const isRehearsalMark = /^[A-Za-z0-9]{1,3}$/.test(inner) && !/[A-G][0-8]/.test(inner)
+      // Rehearsal mark if content is short alphanumeric AND doesn't match note+optional-accidental+octave pattern
+      // Note: [E], [G] etc. (single letter, no octave) are treated as rehearsal marks, not single-note chords
+      const isRehearsalMark =
+        /^[A-Za-z0-9]{1,3}$/.test(inner) && !/[A-G](##|bb|#|b)?[0-8]/.test(inner)
       if (isRehearsalMark) {
         const raw = input.slice(start, end + 1)
         tokens.push({ type: 'REHEARSAL_MARK', raw, position: start })

@@ -155,9 +155,9 @@ export class MusicXMLAdapter {
       }
       parsed = parser.parse(xmlString) as AnyObj
     } catch (err) {
-      throw new Error(`MusicXMLAdapter: failed to parse XML — ${(err as Error).message}`, {
-        cause: err,
-      })
+      const wrapped = new Error(`MusicXMLAdapter: failed to parse XML — ${(err as Error).message}`)
+      ;(wrapped as unknown as Record<string, unknown>).cause = err
+      throw wrapped
     }
     const root: AnyObj = parsed['score-partwise'] ?? {}
 
@@ -385,7 +385,7 @@ export class MusicXMLAdapter {
           triplet: false,
           lyric: pNote.lyric,
           articulation: pNote.articulation,
-          expression: null,
+          expression: undefined,
         }
 
         const note = new Note(noteData)

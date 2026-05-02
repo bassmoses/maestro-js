@@ -203,16 +203,14 @@ describe('Song.exportJSON()', () => {
   it('exports a valid JSON structure', () => {
     const song = new Song({ tempo: 100, key: 'D' })
     song.add('C4:q D4:q')
-    const json = song.exportJSON() as Record<string, unknown>
+    const json = song.exportJSON()
 
     expect(json).toHaveProperty('options')
     expect(json).toHaveProperty('defaultNotation')
     expect(json).toHaveProperty('version', 1)
-    const opts = json.options as Record<string, unknown>
-    expect(opts.tempo).toBe(100)
-    expect(opts.key).toBe('D')
-    const notations = json.defaultNotation as string[]
-    expect(notations).toContain('C4:q D4:q')
+    expect(json.options.tempo).toBe(100)
+    expect(json.options.key).toBe('D')
+    expect(json.defaultNotation).toContain('C4:q D4:q')
   })
 })
 

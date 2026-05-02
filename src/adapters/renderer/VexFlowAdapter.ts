@@ -171,9 +171,9 @@ interface RenderNote {
   articulation: ArticulationType
   ornament: OrnamentType
   graceNote: boolean
-  chordSymbol: string | null
+  chordSymbol?: string
   glissando: boolean
-  expression: string | null
+  expression?: string
   sourceNotes: Note[]
 }
 

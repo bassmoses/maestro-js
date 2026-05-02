@@ -25,14 +25,14 @@ export class Note implements NoteData {
   readonly fermata: boolean
   readonly breath: boolean
   readonly triplet: boolean
-  readonly tupletRatio: { num: number; den: number } | null
+  readonly tupletRatio: { num: number; den: number } | undefined
   readonly lyric?: string
   readonly articulation: Articulation
   readonly ornament: Ornament
   readonly graceNote: boolean
-  readonly chordSymbol: string | null
+  readonly chordSymbol: string | undefined
   readonly glissando: boolean
-  readonly expression: string | null
+  readonly expression: string | undefined
 
   constructor(data: NoteData) {
     this.pitch = data.pitch
@@ -48,14 +48,14 @@ export class Note implements NoteData {
     this.fermata = data.fermata ?? false
     this.breath = data.breath ?? false
     this.triplet = data.triplet ?? false
-    this.tupletRatio = data.tupletRatio ?? null
+    this.tupletRatio = data.tupletRatio ?? undefined
     this.lyric = data.lyric
     this.articulation = data.articulation ?? null
     this.ornament = data.ornament ?? null
     this.graceNote = data.graceNote ?? false
-    this.chordSymbol = data.chordSymbol ?? null
+    this.chordSymbol = data.chordSymbol ?? undefined
     this.glissando = data.glissando ?? false
-    this.expression = data.expression ?? null
+    this.expression = data.expression ?? undefined
   }
 
   get beats(): number {

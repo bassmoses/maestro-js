@@ -201,6 +201,12 @@ function makeRenderNote(dynamic: RenderNote['dynamic']): RenderNote {
     isRest: false,
     fermata: false,
     articulation: undefined as unknown as RenderNote['articulation'],
+    breath: false,
+    ornament: null as unknown as RenderNote['ornament'],
+    graceNote: false,
+    chordSymbol: undefined,
+    glissando: false,
+    expression: undefined,
     sourceNotes: [],
   }
 }

@@ -58,7 +58,7 @@ describe('Node.js Entry Point Integration', () => {
     const song = new Song({ tempo: 100 })
     song.add('E4:q F4:q G4:q A4:q')
 
-    const json = song.exportJSON() as Record<string, unknown>
+    const json = song.exportJSON()
     expect(json).toHaveProperty('options')
     expect(json).toHaveProperty('defaultNotation')
     expect(json).toHaveProperty('version', 1)

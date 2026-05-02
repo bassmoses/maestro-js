@@ -44,6 +44,14 @@ const ACCIDENTAL_MAP: Record<string, string> = {
   bb: 'bb',
 }
 
+// Map Maestro articulation types to VexFlow articulation codes
+const ARTICULATION_MAP: Record<string, string> = {
+  staccato: 'a.',
+  accent: 'a>',
+  tenuto: 'a-',
+  marcato: 'a^',
+}
+
 // Map dynamic markings to VexFlow TextDynamics strings
 const DYNAMIC_MAP: Record<Dynamic, string> = {
   ppp: 'ppp',
@@ -633,13 +641,10 @@ function createVexStaveNotes(
 
     // Add articulation modifier
     if (rn.articulation) {
-      const artMap: Record<string, string> = {
-        staccato: 'a.',
-        accent: 'a>',
-        tenuto: 'a-',
-        marcato: 'a^',
+      const vexCode = ARTICULATION_MAP[rn.articulation]
+      if (vexCode) {
+        staveNote.addModifier(new Articulation(vexCode), 0)
       }
-      staveNote.addModifier(new Articulation(artMap[rn.articulation]), 0)
     }
 
     // Add lyric text below note

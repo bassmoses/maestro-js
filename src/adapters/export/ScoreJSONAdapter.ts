@@ -7,6 +7,7 @@ import type {
   Octave,
   DurationName,
   Dynamic,
+  Articulation,
 } from '../../model/types.js'
 import { durationToDenom } from '../../model/Duration.js'
 import type { Clef } from '../../model/VoiceModel.js'
@@ -71,6 +72,7 @@ export interface ScoreJSONNote {
   fermata?: boolean
   triplet?: boolean
   lyric?: string
+  articulation?: Articulation
 }
 
 export interface ScoreJSONTempoChange {
@@ -232,6 +234,7 @@ function noteToJSON(note: Note): ScoreJSONNote {
   if (note.fermata) result.fermata = true
   if (note.triplet) result.triplet = true
   if (note.lyric) result.lyric = note.lyric
+  if (note.articulation) result.articulation = note.articulation
 
   return result
 }
@@ -251,6 +254,7 @@ function jsonToNote(json: ScoreJSONNote): Note {
     fermata: json.fermata ?? false,
     triplet: json.triplet ?? false,
     lyric: json.lyric,
+    articulation: (json.articulation ?? null) as Articulation,
   }
   return new Note(data)
 }

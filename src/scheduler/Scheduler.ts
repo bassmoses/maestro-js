@@ -2,6 +2,7 @@ import { Score } from '../model/Score.js'
 import { Note } from '../model/Note.js'
 import { durationToBeats, beatsToSeconds } from '../model/Duration.js'
 import { Timeline, TimelineEvent, NoteEvent } from './timeline.js'
+import type { Articulation } from '../model/types.js'
 
 const DYNAMIC_VELOCITY: Record<string, number> = {
   ppp: 16,
@@ -21,7 +22,7 @@ const DEFAULT_VELOCITY = 64 // mp default
 const FERMATA_MULTIPLIER = 2.0 // fermata doubles the note duration
 
 // Articulation effects: [durationMultiplier, velocityDelta]
-const ARTICULATION_EFFECTS: Record<string, [number, number]> = {
+const ARTICULATION_EFFECTS: Record<NonNullable<Articulation>, [number, number]> = {
   staccato: [0.5, 0],
   accent: [1.0, 20],
   tenuto: [1.0, 5],

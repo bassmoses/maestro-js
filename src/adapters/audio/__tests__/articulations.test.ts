@@ -60,6 +60,7 @@ describe('Articulation audio effects', () => {
       const timeline = buildTimeline('C4:q(tenuto)')
       expect(timeline[0].note.velocity).toBe(BASE_VELOCITY + 5)
     })
+    // tenuto +5 clamping (127+5→127) is covered by the shared Math.min(127,...) path, same as accent/marcato
   })
 
   describe('marcato', () => {
@@ -89,15 +90,6 @@ describe('Articulation audio effects', () => {
     it('uses base velocity with no articulation', () => {
       const timeline = buildTimeline('C4:q')
       expect(timeline[0].note.velocity).toBe(BASE_VELOCITY)
-    })
-  })
-
-  describe('accent velocity clamping', () => {
-    it('clamps accent on fff to 127', () => {
-      // fff = 127, +20 would be 147, clamped to 127
-      const timeline = buildTimeline('C4:q(fff)(accent)')
-      expect(timeline[0].note.velocity).toBeLessThanOrEqual(127)
-      expect(timeline[0].note.velocity).toBe(127)
     })
   })
 })

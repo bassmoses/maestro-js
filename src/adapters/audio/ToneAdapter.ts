@@ -18,6 +18,12 @@ export interface PlaybackOptions {
 export type PlaybackEventType = 'beat' | 'note' | 'measure' | 'end'
 export type PlaybackEventHandler = (data: Record<string, unknown>) => void
 
+export interface AudioEffects {
+  reverb?: number // 0-1 wet mix
+  delay?: number // 0-1 wet mix
+  chorus?: number // 0-1 wet mix
+}
+
 interface ScheduledVoice {
   name: string
   synth: Tone.PolySynth
@@ -38,6 +44,7 @@ export class ToneAdapter {
   private instrumentName = 'piano'
   private lastMeasure = -1
   private lastBeat = -1
+  private effectNodes: Tone.ToneAudioNode[] = []
 
   /**
    * Ensure the audio context is started (required by browsers after user gesture).
@@ -186,13 +193,16 @@ export class ToneAdapter {
    */
   seekTo(measure: number, beat: number): void {
     const targetTime = this.findTimeAtPosition(measure, beat)
-    if (targetTime >= 0) {
-      // Release all sounding notes before seeking
-      for (const voice of this.voices.values()) {
-        voice.synth.releaseAll()
-      }
-      Tone.getTransport().seconds = targetTime
+    if (targetTime < 0) {
+      throw new Error(
+        `Cannot seek to measure ${measure}, beat ${beat}: position not found in timeline.`
+      )
     }
+    // Release all sounding notes before seeking
+    for (const voice of this.voices.values()) {
+      voice.synth.releaseAll()
+    }
+    Tone.getTransport().seconds = targetTime
   }
 
   /**
@@ -216,6 +226,52 @@ export class ToneAdapter {
   }
 
   /**
+   * Apply audio effects to all voices.
+   */
+  applyEffects(effects: AudioEffects): void {
+    // Dispose old effect nodes
+    for (const node of this.effectNodes) {
+      node.dispose()
+    }
+    this.effectNodes = []
+
+    const chain: Tone.ToneAudioNode[] = []
+
+    if (effects.reverb != null && effects.reverb > 0) {
+      const reverb = new Tone.Reverb({ decay: 2.5, wet: effects.reverb })
+      chain.push(reverb)
+      this.effectNodes.push(reverb)
+    }
+
+    if (effects.delay != null && effects.delay > 0) {
+      const delay = new Tone.FeedbackDelay({ delayTime: '8n', feedback: 0.3, wet: effects.delay })
+      chain.push(delay)
+      this.effectNodes.push(delay)
+    }
+
+    if (effects.chorus != null && effects.chorus > 0) {
+      const chorus = new Tone.Chorus({
+        frequency: 1.5,
+        delayTime: 3.5,
+        depth: 0.7,
+        wet: effects.chorus,
+      }).start()
+      chain.push(chorus)
+      this.effectNodes.push(chorus)
+    }
+
+    // Reconnect all voices through the effect chain
+    for (const voice of this.voices.values()) {
+      voice.synth.disconnect()
+      if (chain.length > 0) {
+        voice.synth.chain(...chain, Tone.getDestination())
+      } else {
+        voice.synth.toDestination()
+      }
+    }
+  }
+
+  /**
    * Clean up all synths and reset state.
    */
   dispose(): void {
@@ -223,6 +279,10 @@ export class ToneAdapter {
     for (const voice of this.voices.values()) {
       voice.synth.dispose()
     }
+    for (const node of this.effectNodes) {
+      node.dispose()
+    }
+    this.effectNodes = []
     this.voices.clear()
     this.timeline = []
     this.score = null

@@ -59,5 +59,9 @@ const DENOM_MAP: Record<DurationName, string> = {
 }
 
 export function durationToDenom(noteValue: DurationName): string {
-  return DENOM_MAP[noteValue] ?? '4'
+  const denom = DENOM_MAP[noteValue]
+  if (!denom) {
+    throw new Error(`Unknown duration: ${noteValue}`)
+  }
+  return denom
 }

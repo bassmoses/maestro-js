@@ -2,7 +2,7 @@
 
 // Primary user-facing API
 export { Song } from './api/Song.js'
-export type { SongOptions, RenderOptions, PlayOptions, SeekPosition } from './api/Song.js'
+export type { SongOptions, SongJSON, RenderOptions, PlayOptions, SeekPosition } from './api/Song.js'
 export { Voice } from './api/Voice.js'
 
 // Renderer
@@ -19,13 +19,14 @@ export type {
   PlaybackOptions,
   PlaybackEventType,
   PlaybackEventHandler,
+  AudioEffects,
 } from './adapters/audio/ToneAdapter.js'
 export { getInstrument } from './adapters/audio/instruments/index.js'
 export type { InstrumentConfig, InstrumentName } from './adapters/audio/instruments/index.js'
 
 // Internal model (for advanced users)
 export { Score } from './model/Score.js'
-export type { LoopRange, RepeatSection } from './model/Score.js'
+export type { LoopRange, RepeatSection, VoltaEnding } from './model/Score.js'
 export { Note } from './model/Note.js'
 export { Part } from './model/Part.js'
 export { Measure } from './model/Measure.js'

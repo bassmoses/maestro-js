@@ -6,6 +6,7 @@ import type {
   DurationName,
   Dynamic,
   Articulation,
+  Ornament,
   Token,
 } from './types.js'
 import { tokenize } from './tokenizer.js'
@@ -68,11 +69,12 @@ function parseNoteRaw(
   const duration: DurationName = (durRaw ?? 'q') as DurationName
   const dotted = dotRaw === '.'
 
-  // Check for fermata, breath, articulation, vs dynamic across all modifier groups
+  // Check for fermata, breath, articulation, ornament, vs dynamic across all modifier groups
   let dynamic: Dynamic | null = null
   let fermata = false
   let breath = false
   let articulation: Articulation = null
+  let ornament: Ornament = null
   for (const mod of modifiers) {
     if (mod === 'fermata') {
       fermata = true
@@ -80,6 +82,8 @@ function parseNoteRaw(
       breath = true
     } else if (mod === 'staccato' || mod === 'accent' || mod === 'tenuto' || mod === 'marcato') {
       articulation = mod as Articulation
+    } else if (mod === 'trill' || mod === 'mordent' || mod === 'turn') {
+      ornament = mod as Ornament
     } else {
       dynamic = parseDynamicString(mod)
     }
@@ -103,6 +107,7 @@ function parseNoteRaw(
     breath,
     lyric: lyricRaw ?? undefined,
     articulation,
+    ornament,
   }
 }
 
@@ -158,33 +163,54 @@ function parseChordToken(token: Token, input: string, chordGroup: number): NoteN
 }
 
 /**
- * Parse a TRIPLET token raw string like "{C4 D4 E4}:q"
+ * Parse a TRIPLET token raw string like "{C4 D4 E4}:q" or general tuplet "{5: C4 D4 E4 F4 G4}:q"
  */
 function parseTripletToken(token: Token, input: string, tripletGroup: number): NoteNode[] {
   const inner = token.raw.slice(1, token.raw.lastIndexOf('}'))
   const afterBrace = token.raw.slice(token.raw.lastIndexOf('}') + 1)
   const durMatch = afterBrace.match(/^:([whqest])(\.)?/)
   const containerDur: DurationName = durMatch ? (durMatch[1] as DurationName) : 'q'
-  const noteDur: DurationName = TRIPLET_NOTE_DURATION[containerDur]
 
-  const noteStrs = inner.trim().split(/\s+/)
+  // Check for general tuplet syntax: {N: notes}
+  const ratioMatch = inner.match(/^(\d+)\s*:\s*(.*)$/)
+  let tupletNum: number
+  let noteContent: string
+  if (ratioMatch) {
+    tupletNum = parseInt(ratioMatch[1], 10)
+    noteContent = ratioMatch[2].trim()
+  } else {
+    // Standard triplet: 3 notes in the space of 2
+    tupletNum = 3
+    noteContent = inner.trim()
+  }
+
+  // For a standard triplet (3:2), each note gets the next-smaller duration.
+  // For general tuplets, we store the ratio and let Note.beats compute duration.
+  const isStandardTriplet = tupletNum === 3 && !ratioMatch
+  const noteDur: DurationName = isStandardTriplet
+    ? TRIPLET_NOTE_DURATION[containerDur]
+    : containerDur
+  const tupletRatio = { num: tupletNum, den: isStandardTriplet ? 2 : tupletNum - 1 }
+
+  const noteStrs = noteContent.split(/\s+/)
   return noteStrs.map((noteStr) => {
-    const noteMatch = noteStr.match(/^([A-G])(##|bb|#|b)?([0-8])?$/)
+    const noteMatch = noteStr.match(/^([A-GR])(##|bb|#|b)?([0-8])?$/)
     if (!noteMatch) {
       throw new MaestroError(
-        `Invalid note in triplet: "${noteStr}"`,
+        `Invalid note in tuplet: "${noteStr}"`,
         input,
         token.position,
         token.raw.length
       )
     }
     const [, pitchRaw, accidentalRaw, octaveRaw] = noteMatch
+    const isRest = pitchRaw === 'R'
 
     return {
-      type: 'note' as const,
-      pitch: pitchRaw as PitchName,
+      type: (isRest ? 'rest' : 'note') as 'note' | 'rest',
+      pitch: isRest ? null : (pitchRaw as PitchName),
       accidental: (accidentalRaw ?? null) as Accidental,
-      octave: octaveRaw !== undefined ? (parseInt(octaveRaw, 10) as Octave) : null,
+      octave: isRest ? null : octaveRaw !== undefined ? (parseInt(octaveRaw, 10) as Octave) : null,
       duration: noteDur,
       dotted: false,
       dynamic: null,
@@ -194,6 +220,7 @@ function parseTripletToken(token: Token, input: string, tripletGroup: number): N
       chord: false,
       triplet: true,
       tripletGroup,
+      tupletRatio: isStandardTriplet ? undefined : tupletRatio,
       fermata: false,
     }
   })
@@ -215,6 +242,11 @@ function makeBarlineNode(opts?: {
   repeatStart?: boolean
   repeatEnd?: boolean
   daCapo?: boolean
+  dalSegno?: boolean
+  segno?: boolean
+  coda?: boolean
+  fine?: boolean
+  volta?: number
   rehearsalMark?: string
 }): NoteNode {
   return {
@@ -234,6 +266,11 @@ function makeBarlineNode(opts?: {
     repeatStart: opts?.repeatStart,
     repeatEnd: opts?.repeatEnd,
     daCapo: opts?.daCapo,
+    dalSegno: opts?.dalSegno,
+    segno: opts?.segno,
+    coda: opts?.coda,
+    fine: opts?.fine,
+    volta: opts?.volta,
     rehearsalMark: opts?.rehearsalMark,
   }
 }
@@ -243,6 +280,7 @@ export function parse(input: string): NoteNode[] {
   const nodes: NoteNode[] = []
   let tripletGroupCounter = 0
   let chordGroupCounter = 0
+  let pendingChordSymbol: string | undefined
 
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]
@@ -250,6 +288,10 @@ export function parse(input: string): NoteNode[] {
     switch (token.type) {
       case 'NOTE': {
         const node = parseNoteRaw(token.raw, input, token.position)
+        if (pendingChordSymbol) {
+          node.chordSymbol = pendingChordSymbol
+          pendingChordSymbol = undefined
+        }
         nodes.push(node)
         break
       }
@@ -268,6 +310,10 @@ export function parse(input: string): NoteNode[] {
       case 'CHORD': {
         const chordNodes = parseChordToken(token, input, chordGroupCounter)
         chordGroupCounter++
+        if (pendingChordSymbol && chordNodes.length > 0) {
+          chordNodes[0].chordSymbol = pendingChordSymbol
+          pendingChordSymbol = undefined
+        }
         nodes.push(...chordNodes)
         break
       }
@@ -275,6 +321,10 @@ export function parse(input: string): NoteNode[] {
       case 'TRIPLET': {
         const tripletNodes = parseTripletToken(token, input, tripletGroupCounter)
         tripletGroupCounter++
+        if (pendingChordSymbol && tripletNodes.length > 0) {
+          tripletNodes[0].chordSymbol = pendingChordSymbol
+          pendingChordSymbol = undefined
+        }
         nodes.push(...tripletNodes)
         break
       }
@@ -302,6 +352,72 @@ export function parse(input: string): NoteNode[] {
 
       case 'DA_CAPO': {
         nodes.push(makeBarlineNode({ daCapo: true }))
+        break
+      }
+
+      case 'DAL_SEGNO': {
+        nodes.push(makeBarlineNode({ dalSegno: true }))
+        break
+      }
+
+      case 'SEGNO': {
+        nodes.push(makeBarlineNode({ segno: true }))
+        break
+      }
+
+      case 'CODA': {
+        nodes.push(makeBarlineNode({ coda: true }))
+        break
+      }
+
+      case 'FINE': {
+        nodes.push(makeBarlineNode({ fine: true }))
+        break
+      }
+
+      case 'VOLTA': {
+        const voltaNum = parseInt(token.raw[0], 10)
+        nodes.push(makeBarlineNode({ volta: voltaNum }))
+        break
+      }
+
+      case 'GRACE_NOTE': {
+        // Parse ~D4, ~F#5 etc. Strip leading ~
+        const graceRaw = token.raw.slice(1)
+        const graceMatch = graceRaw.match(/^([A-G])(##|bb|#|b)?([0-8])?$/)
+        if (graceMatch) {
+          const [, pitchRaw, accidentalRaw, octaveRaw] = graceMatch
+          nodes.push({
+            type: 'note',
+            pitch: pitchRaw as PitchName,
+            accidental: (accidentalRaw ?? null) as Accidental,
+            octave: octaveRaw !== undefined ? (parseInt(octaveRaw, 10) as Octave) : null,
+            duration: 's', // grace notes are short (sixteenth)
+            dotted: false,
+            dynamic: null,
+            tied: false,
+            slurred: false,
+            isBarline: false,
+            chord: false,
+            triplet: false,
+            fermata: false,
+            graceNote: true,
+          })
+        }
+        break
+      }
+
+      case 'CHORD_SYMBOL': {
+        pendingChordSymbol = token.raw
+        break
+      }
+
+      case 'GLISSANDO': {
+        // Mark the previous note as having a glissando to the next note
+        const lastNode = nodes[nodes.length - 1]
+        if (lastNode && lastNode.type === 'note') {
+          lastNode.glissando = true
+        }
         break
       }
 

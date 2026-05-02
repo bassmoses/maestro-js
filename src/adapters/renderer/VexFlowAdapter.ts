@@ -16,12 +16,20 @@ import {
   Articulation,
   Barline,
   StaveConnector,
+  Ornament as VexOrnament,
+  GraceNote,
+  GraceNoteGroup,
 } from 'vexflow'
 
 import type { Score } from '../../model/Score.js'
 import type { Note } from '../../model/Note.js'
 import type { Measure } from '../../model/Measure.js'
-import type { DurationName, Dynamic, Articulation as ArticulationType } from '../../model/types.js'
+import type {
+  DurationName,
+  Dynamic,
+  Articulation as ArticulationType,
+  Ornament as OrnamentType,
+} from '../../model/types.js'
 import { durationToDenom } from '../../model/Duration.js'
 import type { RenderOptions, ThemeColors } from './types.js'
 import { DEFAULT_RENDER_OPTIONS, THEMES } from './types.js'
@@ -51,6 +59,13 @@ const ARTICULATION_MAP: Record<string, string> = {
   accent: 'a>',
   tenuto: 'a-',
   marcato: 'a^',
+}
+
+// Map ornament types to VexFlow ornament codes
+const ORNAMENT_MAP: Record<string, string> = {
+  trill: 'tr',
+  mordent: 'mordent',
+  turn: 'turn',
 }
 
 // Map dynamic markings to VexFlow TextDynamics strings
@@ -154,8 +169,37 @@ interface RenderNote {
   breath: boolean
   lyric?: string
   articulation: ArticulationType
+  ornament: OrnamentType
+  graceNote: boolean
+  chordSymbol: string | null
+  glissando: boolean
   expression: string | null
   sourceNotes: Note[]
+}
+
+/** Build a RenderNote from a single Note model object. */
+function noteToRenderNote(note: Note, isRest = note.isRest): RenderNote {
+  return {
+    keys: [noteToVexKey(note)],
+    duration: noteToVexDuration(note),
+    accidentals: [note.accidental ? (ACCIDENTAL_MAP[note.accidental] ?? null) : null],
+    dynamic: note.dynamic,
+    tied: note.tied,
+    slurred: note.slurred,
+    dotted: note.dotted,
+    isRest,
+    chordGroup: note.chordGroup,
+    fermata: note.fermata,
+    breath: note.breath,
+    lyric: note.lyric,
+    articulation: note.articulation,
+    ornament: note.ornament,
+    graceNote: note.graceNote,
+    chordSymbol: note.chordSymbol,
+    glissando: note.glissando,
+    expression: note.expression,
+    sourceNotes: [note],
+  }
 }
 
 function groupNotesForRender(notes: readonly Note[]): RenderNote[] {
@@ -176,23 +220,7 @@ function groupNotesForRender(notes: readonly Note[]): RenderNote[] {
         // Start new chord group
         if (currentChord) result.push(currentChord)
         currentChordGroup = note.chordGroup
-        currentChord = {
-          keys: [noteToVexKey(note)],
-          duration: noteToVexDuration(note),
-          accidentals: [note.accidental ? (ACCIDENTAL_MAP[note.accidental] ?? null) : null],
-          dynamic: note.dynamic,
-          tied: note.tied,
-          slurred: note.slurred,
-          dotted: note.dotted,
-          isRest: false,
-          chordGroup: note.chordGroup,
-          fermata: note.fermata,
-          breath: note.breath,
-          lyric: note.lyric,
-          articulation: note.articulation,
-          expression: note.expression,
-          sourceNotes: [note],
-        }
+        currentChord = noteToRenderNote(note, false)
       }
     } else {
       // Flush any pending chord
@@ -201,23 +229,7 @@ function groupNotesForRender(notes: readonly Note[]): RenderNote[] {
         currentChord = null
         currentChordGroup = undefined
       }
-      // Single note
-      result.push({
-        keys: [noteToVexKey(note)],
-        duration: noteToVexDuration(note),
-        accidentals: [note.accidental ? (ACCIDENTAL_MAP[note.accidental] ?? null) : null],
-        dynamic: note.dynamic,
-        tied: note.tied,
-        slurred: note.slurred,
-        dotted: note.dotted,
-        isRest: note.isRest,
-        fermata: note.fermata,
-        breath: note.breath,
-        lyric: note.lyric,
-        articulation: note.articulation,
-        expression: note.expression,
-        sourceNotes: [note],
-      })
+      result.push(noteToRenderNote(note))
     }
   }
 
@@ -429,6 +441,10 @@ function renderAllVoices(
     lastNote: StaveNote
     type: 'cresc' | 'decresc'
   }> = []
+  const glissandoQueue: Array<{
+    startNote: StaveNote
+    endNote: StaveNote | null
+  }> = []
 
   // Track staves for grand staff connectors: [lineIndex][voiceIndex] = Stave
   const stavesByLine: Map<number, Stave[]> = new Map()
@@ -522,6 +538,7 @@ function renderAllVoices(
         tieQueue,
         slurQueue,
         hairpinQueue,
+        glissandoQueue,
         li,
         vi,
         line.measureStartIndex
@@ -551,6 +568,20 @@ function renderAllVoices(
   for (const sl of slurQueue) {
     if (sl.startNote && sl.endNote) {
       const curve = new Curve(sl.startNote, sl.endNote ?? undefined, {})
+      curve.setContext(context).draw()
+    }
+  }
+
+  // Draw glissando lines between connected notes
+  for (const gl of glissandoQueue) {
+    if (gl.startNote && gl.endNote) {
+      // Draw a wavy/straight line between the two notes using a Curve
+      const curve = new Curve(gl.startNote, gl.endNote, {
+        cps: [
+          { x: 0, y: 5 },
+          { x: 0, y: 5 },
+        ],
+      })
       curve.setContext(context).draw()
     }
   }
@@ -618,6 +649,10 @@ function renderMeasuresOnStave(
     lastNote: StaveNote
     type: 'cresc' | 'decresc'
   }>,
+  glissandoQueue: Array<{
+    startNote: StaveNote
+    endNote: StaveNote | null
+  }>,
   lineIdx: number,
   voiceIdx: number,
   _measureStartIndex: number
@@ -631,8 +666,19 @@ function renderMeasuresOnStave(
 
   if (allRenderNotes.length === 0) return
 
-  // Create StaveNotes
+  // Create StaveNotes (grace notes are absorbed as modifiers, so staveNotes may be shorter)
   const staveNotes = createVexStaveNotes(allRenderNotes, theme, opts)
+
+  // Build index mapping: renderNote index → staveNote index (grace notes map to -1)
+  const renderToStave: number[] = []
+  let staveIdx = 0
+  for (const rn of allRenderNotes) {
+    if (rn.graceNote) {
+      renderToStave.push(-1) // grace notes have no corresponding StaveNote
+    } else {
+      renderToStave.push(staveIdx++)
+    }
+  }
 
   // Track ties and slurs
   let inSlur = false
@@ -640,13 +686,22 @@ function renderMeasuresOnStave(
 
   for (let i = 0; i < allRenderNotes.length; i++) {
     const rn = allRenderNotes[i]
+    const si = renderToStave[i]
+    if (si < 0) continue // skip grace notes
 
     if (rn.tied) {
-      // Tie connects this note to the next note in the stave
-      if (i + 1 < staveNotes.length) {
+      // Find the next non-grace renderNote's stave index
+      let nextSi = -1
+      for (let j = i + 1; j < allRenderNotes.length; j++) {
+        if (renderToStave[j] >= 0) {
+          nextSi = renderToStave[j]
+          break
+        }
+      }
+      if (nextSi >= 0 && nextSi < staveNotes.length) {
         tieQueue.push({
-          firstNote: staveNotes[i],
-          lastNote: staveNotes[i + 1],
+          firstNote: staveNotes[si],
+          lastNote: staveNotes[nextSi],
           firstIndex: 0,
           lastIndex: 0,
           voiceIdx,
@@ -657,22 +712,33 @@ function renderMeasuresOnStave(
     if (rn.slurred) {
       if (!inSlur) {
         inSlur = true
-        slurStartNote = staveNotes[i]
+        slurStartNote = staveNotes[si]
       }
     } else if (inSlur) {
       inSlur = false
-      slurQueue.push({
-        startNote: slurStartNote!,
-        endNote: staveNotes[i - 1] ?? null,
-        lineIdx,
-        voiceIdx,
-      })
+      // Find the previous non-grace stave note
+      let prevSi = -1
+      for (let j = i - 1; j >= 0; j--) {
+        if (renderToStave[j] >= 0) {
+          prevSi = renderToStave[j]
+          break
+        }
+      }
+      if (prevSi >= 0) {
+        slurQueue.push({
+          startNote: slurStartNote!,
+          endNote: staveNotes[prevSi],
+          lineIdx,
+          voiceIdx,
+        })
+      }
       slurStartNote = null
     }
   }
 
-  // Collect hairpin runs via pure helper and map indices → StaveNotes
-  for (const run of collectHairpinRuns(allRenderNotes)) {
+  // Collect hairpin runs (only on non-grace notes)
+  const nonGraceRenderNotes = allRenderNotes.filter((rn) => !rn.graceNote)
+  for (const run of collectHairpinRuns(nonGraceRenderNotes)) {
     hairpinQueue.push({
       firstNote: staveNotes[run.startIdx],
       lastNote: staveNotes[run.endIdx],
@@ -688,6 +754,28 @@ function renderMeasuresOnStave(
       lineIdx,
       voiceIdx,
     })
+  }
+
+  // Track glissando connections
+  for (let i = 0; i < allRenderNotes.length; i++) {
+    const si = renderToStave[i]
+    if (si < 0) continue
+    if (allRenderNotes[i].glissando) {
+      // Find next non-grace stave note
+      let nextSi = -1
+      for (let j = i + 1; j < allRenderNotes.length; j++) {
+        if (renderToStave[j] >= 0) {
+          nextSi = renderToStave[j]
+          break
+        }
+      }
+      if (nextSi >= 0 && nextSi < staveNotes.length) {
+        glissandoQueue.push({
+          startNote: staveNotes[si],
+          endNote: staveNotes[nextSi],
+        })
+      }
+    }
   }
 
   // Create VexFlow Voice and add notes
@@ -714,11 +802,26 @@ function createVexStaveNotes(
   theme: ThemeColors,
   opts: Required<RenderOptions>
 ): StaveNote[] {
-  return renderNotes.map((rn) => {
+  const result: StaveNote[] = []
+  let pendingGraceNotes: GraceNote[] = []
+
+  for (const rn of renderNotes) {
+    // Grace notes are collected and attached to the next regular note
+    if (rn.graceNote) {
+      pendingGraceNotes.push(new GraceNote({ keys: rn.keys, duration: '8', slash: true }))
+      continue
+    }
+
     const staveNote = new StaveNote({
       keys: rn.keys,
       duration: rn.duration,
     })
+
+    // Attach any pending grace notes
+    if (pendingGraceNotes.length > 0) {
+      staveNote.addModifier(new GraceNoteGroup(pendingGraceNotes), 0)
+      pendingGraceNotes = []
+    }
 
     // Add accidentals per key
     rn.accidentals.forEach((acc, idx) => {
@@ -751,6 +854,22 @@ function createVexStaveNotes(
       }
     }
 
+    // Add ornament modifier
+    if (rn.ornament) {
+      const ornCode = ORNAMENT_MAP[rn.ornament]
+      if (ornCode) {
+        staveNote.addModifier(new VexOrnament(ornCode).setPosition(3), 0)
+      }
+    }
+
+    // Add chord symbol annotation above note
+    if (rn.chordSymbol) {
+      const chordAnnotation = new Annotation(rn.chordSymbol)
+        .setFont('Arial', 12, 'bold')
+        .setVerticalJustification(Annotation.VerticalJustify.TOP)
+      staveNote.addModifier(chordAnnotation, 0)
+    }
+
     // Add lyric text below note
     if (rn.lyric) {
       const lyricAnnotation = new Annotation(rn.lyric).setVerticalJustification(
@@ -772,8 +891,15 @@ function createVexStaveNotes(
       staveNote.addModifier(exprAnnotation, 0)
     }
 
-    return staveNote
-  })
+    result.push(staveNote)
+  }
+
+  // If grace notes remain with no following regular note, attach to the last regular note
+  if (pendingGraceNotes.length > 0 && result.length > 0) {
+    result[result.length - 1].addModifier(new GraceNoteGroup(pendingGraceNotes), 0)
+  }
+
+  return result
 }
 
 function drawBeams(

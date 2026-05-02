@@ -14,10 +14,11 @@ export class MaestroError extends Error {
     const lines: string[] = [`${this.name}: ${this.message}`]
 
     if (this.input !== undefined && this.position !== undefined) {
-      lines.push(`  Input: "${this.input}"`)
+      const prefix = '  Input: "'
+      lines.push(`${prefix}${this.input}"`)
 
       const arrowLength = this.length ?? 1
-      const padding = ' '.repeat(this.position + 10) // 10 = length of '  Input: "'
+      const padding = ' '.repeat(this.position + prefix.length)
       const arrows = '^'.repeat(arrowLength)
       lines.push(`${padding}${arrows}`)
     }

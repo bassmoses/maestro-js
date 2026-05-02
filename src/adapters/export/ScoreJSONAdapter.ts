@@ -8,6 +8,7 @@ import type {
   DurationName,
   Dynamic,
   Articulation,
+  Ornament,
 } from '../../model/types.js'
 import { durationToDenom } from '../../model/Duration.js'
 import type { Clef } from '../../model/VoiceModel.js'
@@ -30,6 +31,11 @@ export interface ScoreJSON {
   tempoChanges?: ScoreJSONTempoChange[]
   repeats?: ScoreJSONRepeat[]
   daCapo?: boolean
+  dalSegno?: boolean
+  segnoMeasure?: number
+  codaMeasure?: number
+  fineMeasure?: number
+  voltaEndings?: Array<{ measure: number; ending: number }>
 }
 
 export interface ScoreJSONMetadata {
@@ -73,8 +79,13 @@ export interface ScoreJSONNote {
   fermata?: boolean
   breath?: boolean
   triplet?: boolean
+  tupletRatio?: { num: number; den: number }
   lyric?: string
   articulation?: Articulation
+  ornament?: string
+  graceNote?: boolean
+  chordSymbol?: string
+  glissando?: boolean
   expression?: string
 }
 
@@ -162,6 +173,21 @@ export class ScoreJSONAdapter {
       result.daCapo = true
     }
 
+    // Dal Segno / navigation markers
+    if (score.getDalSegno()) {
+      result.dalSegno = true
+    }
+    const segno = score.getSegnoMeasure()
+    if (segno != null) result.segnoMeasure = segno
+    const coda = score.getCodaMeasure()
+    if (coda != null) result.codaMeasure = coda
+    const fine = score.getFineMeasure()
+    if (fine != null) result.fineMeasure = fine
+    const voltas = score.getVoltaEndings()
+    if (voltas.length > 0) {
+      result.voltaEndings = voltas.map((v) => ({ measure: v.measure, ending: v.ending }))
+    }
+
     return result
   }
 
@@ -219,6 +245,25 @@ export class ScoreJSONAdapter {
       score.setDaCapo(true)
     }
 
+    // Dal Segno / navigation markers
+    if (json.dalSegno) {
+      score.setDalSegno(true)
+    }
+    if (json.segnoMeasure != null) {
+      score.setSegnoMeasure(json.segnoMeasure)
+    }
+    if (json.codaMeasure != null) {
+      score.setCodaMeasure(json.codaMeasure)
+    }
+    if (json.fineMeasure != null) {
+      score.setFineMeasure(json.fineMeasure)
+    }
+    if (json.voltaEndings) {
+      for (const v of json.voltaEndings) {
+        score.addVoltaEnding(v.measure, v.ending)
+      }
+    }
+
     return score
   }
 }
@@ -242,8 +287,13 @@ function noteToJSON(note: Note): ScoreJSONNote {
   if (note.fermata) result.fermata = true
   if (note.breath) result.breath = true
   if (note.triplet) result.triplet = true
+  if (note.tupletRatio) result.tupletRatio = note.tupletRatio
   if (note.lyric) result.lyric = note.lyric
   if (note.articulation) result.articulation = note.articulation
+  if (note.ornament) result.ornament = note.ornament
+  if (note.graceNote) result.graceNote = true
+  if (note.chordSymbol) result.chordSymbol = note.chordSymbol
+  if (note.glissando) result.glissando = true
   if (note.expression) result.expression = note.expression
 
   return result
@@ -264,8 +314,13 @@ function jsonToNote(json: ScoreJSONNote): Note {
     fermata: json.fermata ?? false,
     breath: json.breath ?? false,
     triplet: json.triplet ?? false,
+    tupletRatio: json.tupletRatio,
     lyric: json.lyric,
     articulation: (json.articulation ?? null) as Articulation,
+    ornament: (json.ornament ?? null) as Ornament,
+    graceNote: json.graceNote ?? false,
+    chordSymbol: json.chordSymbol,
+    glissando: json.glissando ?? false,
     expression: json.expression,
   }
   return new Note(data)

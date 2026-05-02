@@ -93,11 +93,17 @@ export function midiToPitch(
   if (midi < 0 || midi > 127) {
     throw new Error(`MIDI number out of range: ${midi}`)
   }
-  const octave = Math.floor(midi / 12) - 1
+  const rawOctave = Math.floor(midi / 12) - 1
+  if (rawOctave > 8) {
+    throw new Error(
+      `MIDI ${midi} produces octave ${rawOctave}, which is above the supported 0–8 range.`
+    )
+  }
+  const octave = Math.max(0, rawOctave)
   const semitone = midi % 12
   const table = preferFlats ? SEMITONE_TO_PITCH_FLAT : SEMITONE_TO_PITCH_SHARP
   const { pitch, accidental } = table[semitone]
-  return { pitch, accidental, octave: Math.max(0, Math.min(8, octave)) as Octave }
+  return { pitch, accidental, octave: octave as Octave }
 }
 
 /**

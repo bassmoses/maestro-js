@@ -57,8 +57,83 @@ export function tokenize(input: string): Token[] {
       continue
     }
 
-    // Tie
+    // D.S. (Dal Segno)
+    if (input.slice(i, i + 4) === 'D.S.') {
+      tokens.push({ type: 'DAL_SEGNO', raw: 'D.S.', position: i })
+      i += 4
+      continue
+    }
+
+    // Segno marker (𝄋 or the word)
+    if (input.slice(i, i + 5) === 'Segno') {
+      tokens.push({ type: 'SEGNO', raw: 'Segno', position: i })
+      i += 5
+      continue
+    }
+
+    // Coda marker
+    if (input.slice(i, i + 4) === 'Coda') {
+      tokens.push({ type: 'CODA', raw: 'Coda', position: i })
+      i += 4
+      continue
+    }
+
+    // Fine marker
+    if (input.slice(i, i + 4) === 'Fine') {
+      tokens.push({ type: 'FINE', raw: 'Fine', position: i })
+      i += 4
+      continue
+    }
+
+    // Volta ending: |1. or |2. or |3. (must follow a barline character)
+    // We check if the previous token was BARLINE, REPEAT_START or REPEAT_END
+    // and current char is a digit followed by '.'
+    // Actually, detect standalone volta markers like 1. 2. at start of measure
+    if (/[1-9]/.test(input[i]) && input[i + 1] === '.') {
+      tokens.push({ type: 'VOLTA', raw: input.slice(i, i + 2), position: i })
+      i += 2
+      continue
+    }
+
+    // Glissando: ~>
+    if (input[i] === '~' && input[i + 1] === '>') {
+      tokens.push({ type: 'GLISSANDO', raw: '~>', position: i })
+      i += 2
+      continue
+    }
+
+    // Chord symbol: @"Cmaj7"
+    if (input[i] === '@' && input[i + 1] === '"') {
+      const closeQuote = input.indexOf('"', i + 2)
+      if (closeQuote === -1) {
+        throw new MaestroError('Unclosed chord symbol quote.', input, i, 2)
+      }
+      const symbol = input.slice(i + 2, closeQuote)
+      tokens.push({ type: 'CHORD_SYMBOL', raw: symbol, position: i })
+      i = closeQuote + 1
+      continue
+    }
+
+    // Tie or Grace note
+    // ~ followed by a note-letter (possibly with whitespace) at the start or after a non-note token = grace note
+    // ~ after a note token (connecting same pitches) = tie
     if (input[i] === '~') {
+      const afterTilde = input.slice(i + 1)
+      const whitespaceLen = afterTilde.length - afterTilde.trimStart().length
+      const rest = afterTilde.trimStart()
+      const prevToken = tokens.length > 0 ? tokens[tokens.length - 1] : null
+      const nextIsNote = /^[A-G]/.test(rest)
+      // Grace note: ~ at start, or ~ after a barline/non-note token, followed by a note
+      const isGraceNote = nextIsNote && (!prevToken || prevToken.type !== 'NOTE')
+      if (isGraceNote) {
+        const graceMatch = rest.match(/^([A-G])(##|bb|#|b)?([0-8])?/)
+        if (graceMatch) {
+          const totalLen = 1 + whitespaceLen + graceMatch[0].length // ~, whitespace, note
+          tokens.push({ type: 'GRACE_NOTE', raw: '~' + graceMatch[0], position: i })
+          i += totalLen
+          continue
+        }
+      }
       tokens.push({ type: 'TIE', raw: '~', position: i })
       i++
       continue
@@ -131,8 +206,10 @@ export function tokenize(input: string): Token[] {
       const inner = input.slice(start + 1, end)
       const afterBrace = input[end + 1]
       // Expression text: inner contains no note-like pattern and no ':' follows
-      const isTriplet = afterBrace === ':' || /^[A-G]/.test(inner.trimStart())
-      if (!isTriplet) {
+      // Also detect general tuplet syntax: {N: notes}:dur where N is a digit
+      const isTuplet =
+        afterBrace === ':' || /^[A-G]/.test(inner.trimStart()) || /^\d+\s*:/.test(inner.trimStart())
+      if (!isTuplet) {
         // Expression text token
         const raw = input.slice(start, end + 1)
         tokens.push({ type: 'EXPRESSION_TEXT', raw, position: start })

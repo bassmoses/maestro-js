@@ -6,6 +6,7 @@ import {
   DurationName,
   Dynamic,
   Articulation,
+  Ornament,
 } from './types.js'
 import { durationToBeats } from './Duration.js'
 import { pitchToMidi, midiToFrequency } from './Pitch.js'
@@ -24,8 +25,13 @@ export class Note implements NoteData {
   readonly fermata: boolean
   readonly breath: boolean
   readonly triplet: boolean
+  readonly tupletRatio: { num: number; den: number } | null
   readonly lyric?: string
   readonly articulation: Articulation
+  readonly ornament: Ornament
+  readonly graceNote: boolean
+  readonly chordSymbol: string | null
+  readonly glissando: boolean
   readonly expression: string | null
 
   constructor(data: NoteData) {
@@ -42,13 +48,22 @@ export class Note implements NoteData {
     this.fermata = data.fermata ?? false
     this.breath = data.breath ?? false
     this.triplet = data.triplet ?? false
+    this.tupletRatio = data.tupletRatio ?? null
     this.lyric = data.lyric
     this.articulation = data.articulation ?? null
+    this.ornament = data.ornament ?? null
+    this.graceNote = data.graceNote ?? false
+    this.chordSymbol = data.chordSymbol ?? null
+    this.glissando = data.glissando ?? false
     this.expression = data.expression ?? null
   }
 
   get beats(): number {
-    return durationToBeats(this.duration, this.dotted)
+    const base = durationToBeats(this.duration, this.dotted)
+    if (this.tupletRatio) {
+      return (base * this.tupletRatio.den) / this.tupletRatio.num
+    }
+    return base
   }
 
   get isRest(): boolean {

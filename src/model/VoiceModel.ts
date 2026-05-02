@@ -1,12 +1,12 @@
 import { Note } from './Note.js'
 import { Measure, TimeSignature } from './Measure.js'
 import { DURATION_BEATS, durationToBeats } from './Duration.js'
-import type { DurationName, NoteData } from './types.js'
+import { type DurationName, type NoteData, BEAT_EPSILON } from './types.js'
 
 export type Clef = 'treble' | 'bass' | 'treble-8' | 'alto' | 'tenor'
 
 // Durations ordered large → small for splitting
-const SPLIT_DURATIONS: DurationName[] = ['w', 'h', 'q', 'e', 's', 't']
+const SPLIT_DURATIONS: readonly DurationName[] = ['w', 'h', 'q', 'e', 's', 't']
 
 /**
  * Find the largest duration that fits within the given beats.
@@ -57,12 +57,11 @@ export class VoiceModel {
     // — they share time with the first note of their group
     if (note.chord && note.chordGroup != null && note.chordGroup === this._currentChordGroup) {
       const current = this.measures[this.measures.length - 1]
-      if (!current) {
-        // No measure exists yet — fall through to normal logic
-      } else {
+      if (current) {
         current.addNote(note, false)
         return
       }
+      // No measure exists yet — fall through to normal logic
     }
 
     let current = this.measures[this.measures.length - 1]
@@ -78,7 +77,7 @@ export class VoiceModel {
     // First note of a new chord group
     if (note.chord && note.chordGroup != null) {
       this._currentChordGroup = note.chordGroup
-      if (note.beats > current.beatsRemaining + 1e-9) {
+      if (note.beats > current.beatsRemaining + BEAT_EPSILON) {
         this.splitNoteAcrossMeasures(note, timeSignature)
         return
       }
@@ -90,7 +89,7 @@ export class VoiceModel {
     this._currentChordGroup = -1
 
     // If note fits, add it directly
-    if (note.beats <= current.beatsRemaining + 1e-9) {
+    if (note.beats <= current.beatsRemaining + BEAT_EPSILON) {
       current.addNote(note, true)
       return
     }
@@ -107,7 +106,7 @@ export class VoiceModel {
     let remainingBeats = note.beats
     let isFirst = true
 
-    while (remainingBeats > 1e-9) {
+    while (remainingBeats > BEAT_EPSILON) {
       let current = this.measures[this.measures.length - 1]
       if (!current || current.isFull) {
         const mark = this._pendingRehearsalMark
@@ -119,7 +118,11 @@ export class VoiceModel {
       const available = current.beatsRemaining
       const useBeats = Math.min(remainingBeats, available)
       const fit = fitDuration(useBeats)
-      if (!fit) break // safety — shouldn't happen
+      if (!fit) {
+        throw new Error(
+          `Cannot fit remaining ${useBeats} beats into any duration. Minimum supported is 0.125 (thirty-second note).`
+        )
+      }
 
       const splitData: NoteData = {
         pitch: note.pitch,
@@ -128,7 +131,7 @@ export class VoiceModel {
         duration: fit.duration,
         dotted: fit.dotted,
         dynamic: isFirst ? note.dynamic : null,
-        tied: remainingBeats - durationToBeats(fit.duration, fit.dotted) > 1e-9, // tie if more fragments follow
+        tied: remainingBeats - durationToBeats(fit.duration, fit.dotted) > BEAT_EPSILON, // tie if more fragments follow
         slurred: note.slurred,
         chord: note.chord,
         chordGroup: note.chordGroup,

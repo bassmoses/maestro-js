@@ -26,6 +26,11 @@ export interface RepeatSection {
   endMeasure: number // 1-based, inclusive
 }
 
+export interface VoltaEnding {
+  measure: number // 1-based measure where this volta starts
+  ending: number // 1 = first ending, 2 = second ending, etc.
+}
+
 export interface LoopRange {
   startMeasure: number // 1-based
   endMeasure: number // 1-based, inclusive
@@ -41,6 +46,11 @@ export class Score {
   private tempoMap: Map<number, number> = new Map() // measure number → BPM
   private repeatSections: RepeatSection[] = []
   private hasDaCapo: boolean = false
+  private hasDalSegno: boolean = false
+  private segnoMeasure: number | null = null
+  private codaMeasure: number | null = null
+  private fineMeasure: number | null = null
+  private voltaEndings: VoltaEnding[] = []
   private loopRange: LoopRange | null = null
 
   constructor(options?: Partial<ScoreOptions>) {
@@ -113,9 +123,9 @@ export class Score {
    */
   getTempoAtMeasure(measure: number): number {
     let effectiveTempo = this.tempo
-    for (let m = 1; m <= measure; m++) {
-      if (this.tempoMap.has(m)) {
-        effectiveTempo = this.tempoMap.get(m)!
+    for (const [m, bpm] of this.tempoMap) {
+      if (m <= measure) {
+        effectiveTempo = bpm
       }
     }
     return effectiveTempo
@@ -149,6 +159,54 @@ export class Score {
    */
   getDaCapo(): boolean {
     return this.hasDaCapo
+  }
+
+  setDalSegno(value: boolean): this {
+    this.hasDalSegno = value
+    return this
+  }
+
+  getDalSegno(): boolean {
+    return this.hasDalSegno
+  }
+
+  setSegnoMeasure(measure: number): this {
+    if (measure < 1) throw new Error(`Segno measure must be >= 1, got ${measure}`)
+    this.segnoMeasure = measure
+    return this
+  }
+
+  getSegnoMeasure(): number | null {
+    return this.segnoMeasure
+  }
+
+  setCodaMeasure(measure: number): this {
+    if (measure < 1) throw new Error(`Coda measure must be >= 1, got ${measure}`)
+    this.codaMeasure = measure
+    return this
+  }
+
+  getCodaMeasure(): number | null {
+    return this.codaMeasure
+  }
+
+  setFineMeasure(measure: number): this {
+    if (measure < 1) throw new Error(`Fine measure must be >= 1, got ${measure}`)
+    this.fineMeasure = measure
+    return this
+  }
+
+  getFineMeasure(): number | null {
+    return this.fineMeasure
+  }
+
+  addVoltaEnding(measure: number, ending: number): this {
+    this.voltaEndings.push({ measure, ending })
+    return this
+  }
+
+  getVoltaEndings(): readonly VoltaEnding[] {
+    return this.voltaEndings
   }
 
   /**

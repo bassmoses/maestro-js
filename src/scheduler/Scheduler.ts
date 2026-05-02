@@ -1,8 +1,9 @@
 import { Score } from '../model/Score.js'
 import { Note } from '../model/Note.js'
 import { durationToBeats, beatsToSeconds } from '../model/Duration.js'
+import { midiToFrequency } from '../model/Pitch.js'
 import { Timeline, TimelineEvent, NoteEvent } from './timeline.js'
-import type { Articulation } from '../model/types.js'
+import type { Articulation, Ornament } from '../model/types.js'
 
 const DYNAMIC_VELOCITY: Record<string, number> = {
   ppp: 16,
@@ -48,6 +49,53 @@ function formatPitch(note: Note): string | null {
 function dynamicToVelocity(dynamic: string | null): number {
   if (dynamic === null) return DEFAULT_VELOCITY
   return DYNAMIC_VELOCITY[dynamic] ?? DEFAULT_VELOCITY
+}
+
+// Grace note duration as a fraction of the main note
+const GRACE_NOTE_FRACTION = 0.125 // 1/8 of the main note
+
+/**
+ * Expand an ornament into a sequence of {midiOffset, durationFraction} pairs.
+ * midiOffset is relative to the original note's MIDI pitch.
+ * durationFraction is the portion of the total note duration this sub-note uses.
+ */
+function expandOrnament(
+  ornament: NonNullable<Ornament>,
+  totalDuration: number
+): Array<{ midiOffset: number; duration: number }> {
+  switch (ornament) {
+    case 'trill': {
+      // Alternating between note and note+2 (whole step above)
+      const subdivisions = 8
+      const subDur = totalDuration / subdivisions
+      const result: Array<{ midiOffset: number; duration: number }> = []
+      for (let i = 0; i < subdivisions; i++) {
+        result.push({ midiOffset: i % 2 === 0 ? 0 : 2, duration: subDur })
+      }
+      return result
+    }
+    case 'mordent': {
+      // Quick: note → note above → note (3 sub-notes)
+      const mordentDur = totalDuration / 4
+      return [
+        { midiOffset: 0, duration: mordentDur },
+        { midiOffset: 2, duration: mordentDur },
+        { midiOffset: 0, duration: totalDuration - 2 * mordentDur },
+      ]
+    }
+    case 'turn': {
+      // note above → note → note below → note (4 sub-notes)
+      const turnDur = totalDuration / 4
+      return [
+        { midiOffset: 2, duration: turnDur },
+        { midiOffset: 0, duration: turnDur },
+        { midiOffset: -2, duration: turnDur },
+        { midiOffset: 0, duration: turnDur },
+      ]
+    }
+    default:
+      return [{ midiOffset: 0, duration: totalDuration }]
+  }
 }
 
 export class Scheduler {
@@ -122,7 +170,8 @@ export class Scheduler {
             const baseVelocity = dynamicToVelocity(note.dynamic)
             const velocity = artEffect ? Math.min(127, baseVelocity + artEffect[1]) : baseVelocity
 
-            const noteEvent: NoteEvent = {
+            // Helper to build a NoteEvent with shared fields
+            const makeEvent = (overrides: Partial<NoteEvent>): NoteEvent => ({
               pitch: formatPitch(note),
               midi: note.midi,
               frequency: note.frequency,
@@ -132,14 +181,49 @@ export class Scheduler {
               voice: voice.name,
               measure: measureNumber,
               beat: totalBeatsAccumulated,
-              tied: note.tied,
-              chord: note.chord,
-            }
-
-            events.push({
-              time: currentTime,
-              note: noteEvent,
+              tied: false,
+              chord: false,
+              ...overrides,
             })
+
+            // Grace note: short note that steals time from the next note
+            if (note.graceNote) {
+              events.push({
+                time: currentTime,
+                note: makeEvent({
+                  duration: durationSecs * GRACE_NOTE_FRACTION,
+                  velocity: Math.max(16, velocity - 10),
+                }),
+              })
+              // Grace notes don't advance beat — they steal from next note
+              // But we do advance a tiny bit of time
+              breathOffset += durationSecs * GRACE_NOTE_FRACTION
+            } else if (note.ornament && note.midi != null) {
+              // Expand ornament into sub-notes
+              const subNotes = expandOrnament(note.ornament, durationSecs)
+              let subTime = currentTime
+              for (const sub of subNotes) {
+                const subMidi = note.midi + sub.midiOffset
+                events.push({
+                  time: subTime,
+                  note: makeEvent({
+                    midi: subMidi,
+                    frequency: midiToFrequency(subMidi),
+                    duration: sub.duration,
+                  }),
+                })
+                subTime += sub.duration
+              }
+            } else {
+              events.push({
+                time: currentTime,
+                note: makeEvent({
+                  tied: note.tied,
+                  chord: note.chord,
+                  glissando: note.glissando || undefined,
+                }),
+              })
+            }
 
             if (!note.chord) {
               totalBeatsAccumulated += beats
@@ -257,10 +341,21 @@ export class Scheduler {
 
     const repeats = [...score.getRepeatSections()]
     const daCapo = score.getDaCapo()
+    const dalSegno = score.getDalSegno()
+    const segnoMeasure = score.getSegnoMeasure() // 1-based
+    const codaMeasure = score.getCodaMeasure() // 1-based
+    const fineMeasure = score.getFineMeasure() // 1-based
+    const voltaEndings = score.getVoltaEndings()
 
-    // If no repeats and no da capo, simple sequential order
-    if (repeats.length === 0 && !daCapo) {
+    // If no repeats and no navigation markers, simple sequential order
+    if (repeats.length === 0 && !daCapo && !dalSegno && voltaEndings.length === 0) {
       return Array.from({ length: totalMeasures }, (_, i) => i)
+    }
+
+    // Build volta map: measure (1-based) → ending number
+    const voltaMap = new Map<number, number>()
+    for (const v of voltaEndings) {
+      voltaMap.set(v.measure, v.ending)
     }
 
     // Build order with repeats unrolled
@@ -268,14 +363,26 @@ export class Scheduler {
     let i = 0
 
     while (i < totalMeasures) {
+      // First pass: skip volta ending 2 measures (play ending 1)
+      const voltaFirst = voltaMap.get(i + 1)
+      if (voltaFirst === 2) {
+        i++
+        continue
+      }
       order.push(i)
 
       // Check if this measure ends a repeat section (1-based check)
       const measureNum = i + 1
       const repeat = repeats.find((r) => r.endMeasure === measureNum)
       if (repeat) {
-        // Replay from start of repeat section
-        for (let m = repeat.startMeasure - 1; m <= repeat.endMeasure - 1; m++) {
+        // Replay from start of repeat section, respecting volta endings
+        const repeatStart = repeat.startMeasure - 1
+        const repeatEnd = repeat.endMeasure - 1
+
+        for (let m = repeatStart; m <= repeatEnd; m++) {
+          const voltaEnding = voltaMap.get(m + 1)
+          // On repeat pass, skip ending 1 measures, play ending 2 measures
+          if (voltaEnding === 1) continue
           order.push(m)
         }
         // Remove this repeat so it only fires once
@@ -286,10 +393,31 @@ export class Scheduler {
       i++
     }
 
-    // Da Capo: replay from beginning
+    // Da Capo: replay from beginning to Fine (or end)
     if (daCapo) {
-      for (let m = 0; m < totalMeasures; m++) {
+      const stopAt = fineMeasure ?? totalMeasures
+      for (let m = 0; m < stopAt; m++) {
+        // On DC replay, skip volta ending 1 measures, play ending 2 measures
+        const voltaEnding = voltaMap.get(m + 1)
+        if (voltaEnding === 1) continue
         order.push(m)
+      }
+    }
+
+    // Dal Segno: replay from Segno to Fine or Coda (or end)
+    if (dalSegno && segnoMeasure != null) {
+      const jumpTo = segnoMeasure - 1
+      const stopAt = fineMeasure ?? codaMeasure ?? totalMeasures
+      for (let m = jumpTo; m < stopAt; m++) {
+        const voltaEnding = voltaMap.get(m + 1)
+        if (voltaEnding === 1) continue
+        order.push(m)
+      }
+      // If there's a Coda, jump to it and play to end
+      if (codaMeasure != null) {
+        for (let m = codaMeasure - 1; m < totalMeasures; m++) {
+          order.push(m)
+        }
       }
     }
 

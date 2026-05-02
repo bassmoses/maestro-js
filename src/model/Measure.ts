@@ -1,4 +1,4 @@
-import { DurationName } from './types.js'
+import { type DurationName, BEAT_EPSILON } from './types.js'
 import { DURATION_BEATS } from './Duration.js'
 import { Note } from './Note.js'
 
@@ -37,7 +37,7 @@ export class Measure {
   }
 
   get isFull(): boolean {
-    return this.beatsRemaining <= 1e-9
+    return this.beatsRemaining <= BEAT_EPSILON
   }
 
   /**
@@ -46,7 +46,7 @@ export class Measure {
    * (for chord notes that share the same time slot).
    */
   addNote(note: Note, advanceTime: boolean = true): void {
-    if (advanceTime && note.beats > this.beatsRemaining + 1e-9) {
+    if (advanceTime && note.beats > this.beatsRemaining + BEAT_EPSILON) {
       throw new Error(
         `Note (${note.beats} beats) would overflow measure ` +
           `(${this.beatsRemaining} beats remaining)`

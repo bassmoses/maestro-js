@@ -10,6 +10,7 @@ export interface NoteEvent {
   beat: number
   tied: boolean
   chord: boolean
+  glissando?: boolean
 }
 
 export interface BeatEvent {

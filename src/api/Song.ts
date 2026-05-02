@@ -45,6 +45,14 @@ export interface SeekPosition {
 type SongEventType = 'beat' | 'note' | 'measure' | 'end'
 type SongEventHandler = (data: Record<string, unknown>) => void
 
+export interface SongJSON {
+  version: number
+  options: SongOptions
+  defaultNotation: string[]
+  voices: Array<{ name: string; clef: Clef; notations: string[] }>
+  tempoChanges: Array<{ measure: number; bpm: number }>
+}
+
 export class Song {
   private readonly options: SongOptions
   private score: Score
@@ -52,8 +60,10 @@ export class Song {
   private defaultNotation: string[] = []
   private eventHandlers: Map<SongEventType, SongEventHandler[]> = new Map()
   private audioAdapter: ToneAdapter | null = null
+  private adapterPromise: Promise<ToneAdapter> | null = null
   private tempoChanges: Array<{ measure: number; bpm: number }> = []
   private loopSettings: { startMeasure: number; endMeasure: number } | null = null
+  private pendingEffects: { reverb?: number; delay?: number; chorus?: number } | null = null
 
   constructor(options?: SongOptions) {
     this.options = {
@@ -184,6 +194,16 @@ export class Song {
     return this
   }
 
+  /** Apply audio effects (reverb, delay, chorus). Call before or after play(). */
+  async effects(fx: { reverb?: number; delay?: number; chorus?: number }): Promise<this> {
+    this.pendingEffects = fx
+    // Apply immediately if adapter already exists
+    if (this.audioAdapter) {
+      this.audioAdapter.applyEffects(fx)
+    }
+    return this
+  }
+
   /** Seek to a position. */
   seekTo(position: SeekPosition): this {
     if (this.audioAdapter) {
@@ -205,7 +225,7 @@ export class Song {
   }
 
   /** Export as portable JSON format (includes raw notation for round-tripping). */
-  exportJSON(): object {
+  exportJSON(): SongJSON {
     return {
       version: 1,
       options: { ...this.options },
@@ -221,33 +241,58 @@ export class Song {
 
   /** Load from a previously exported JSON object. */
   static fromJSON(json: object): Song {
-    const data = json as {
-      version?: number
-      options?: SongOptions
-      defaultNotation?: string[]
-      voices?: Array<{ name: string; clef?: Clef; notations: string[] }>
-      tempoChanges?: Array<{ measure: number; bpm: number }>
+    if (!json || typeof json !== 'object') {
+      throw new Error('Song.fromJSON() requires a non-null object.')
     }
+    const data = json as Record<string, unknown>
 
-    const song = new Song(data.options)
+    const song = new Song(data.options as SongOptions | undefined)
 
-    if (data.defaultNotation) {
+    if (data.defaultNotation != null) {
+      if (!Array.isArray(data.defaultNotation)) {
+        throw new Error('Song.fromJSON(): defaultNotation must be an array of strings.')
+      }
       for (const notation of data.defaultNotation) {
+        if (typeof notation !== 'string') {
+          throw new Error('Song.fromJSON(): defaultNotation must contain only strings.')
+        }
         song.add(notation)
       }
     }
 
-    if (data.voices) {
-      for (const v of data.voices) {
-        const voice = song.voice(v.name, { clef: v.clef })
+    if (data.voices != null) {
+      if (!Array.isArray(data.voices)) {
+        throw new Error('Song.fromJSON(): voices must be an array.')
+      }
+      for (const v of data.voices as Array<Record<string, unknown>>) {
+        if (typeof v.name !== 'string') {
+          throw new Error('Song.fromJSON(): each voice must have a string "name".')
+        }
+        if (!Array.isArray(v.notations)) {
+          throw new Error(`Song.fromJSON(): voice "${v.name}" must have a "notations" array.`)
+        }
+        const voice = song.voice(v.name, { clef: v.clef as Clef | undefined })
         for (const notation of v.notations) {
+          if (typeof notation !== 'string') {
+            throw new Error(
+              `Song.fromJSON(): voice "${v.name}" notations must contain only strings.`
+            )
+          }
           voice.add(notation)
         }
       }
     }
 
-    if (data.tempoChanges) {
-      for (const tc of data.tempoChanges) {
+    if (data.tempoChanges != null) {
+      if (!Array.isArray(data.tempoChanges)) {
+        throw new Error('Song.fromJSON(): tempoChanges must be an array.')
+      }
+      for (const tc of data.tempoChanges as Array<Record<string, unknown>>) {
+        if (typeof tc.measure !== 'number' || typeof tc.bpm !== 'number') {
+          throw new Error(
+            'Song.fromJSON(): each tempoChange must have numeric "measure" and "bpm".'
+          )
+        }
         song.tempoAt(tc.measure, tc.bpm)
       }
     }
@@ -359,9 +404,25 @@ export class Song {
   }
 
   private async getOrCreateAudioAdapter(options?: PlayOptions): Promise<ToneAdapter> {
+    // Prevent concurrent adapter creation
+    if (this.adapterPromise) {
+      await this.adapterPromise
+    }
+    const promise = this.createAudioAdapter(options)
+    this.adapterPromise = promise
+    try {
+      const adapter = await promise
+      return adapter
+    } finally {
+      this.adapterPromise = null
+    }
+  }
+
+  private async createAudioAdapter(options?: PlayOptions): Promise<ToneAdapter> {
     // Dispose old adapter if options change
     if (this.audioAdapter) {
       this.audioAdapter.dispose()
+      this.audioAdapter = null
     }
     const { ToneAdapter: Adapter } = await import('../adapters/audio/ToneAdapter.js')
     const adapter = new Adapter()
@@ -370,6 +431,10 @@ export class Song {
       solo: options?.solo,
       instrument: this.options.instrument,
     })
+    // Re-apply stored effects
+    if (this.pendingEffects) {
+      adapter.applyEffects(this.pendingEffects)
+    }
     this.audioAdapter = adapter
     return adapter
   }
@@ -445,6 +510,24 @@ export class Song {
         }
         if (node.daCapo) {
           this.score.setDaCapo(true)
+        }
+        if (node.dalSegno) {
+          this.score.setDalSegno(true)
+        }
+        if (node.segno) {
+          this.score.setSegnoMeasure(measureCount + 1)
+        }
+        if (node.coda) {
+          this.score.setCodaMeasure(measureCount + 1)
+        }
+        if (node.fine) {
+          this.score.setFineMeasure(measureCount)
+        }
+        if (node.volta != null) {
+          this.score.addVoltaEnding(measureCount + 1, node.volta)
+        }
+        if (node.rehearsalMark) {
+          voice.setPendingRehearsalMark(node.rehearsalMark)
         }
         measureCount++
         continue

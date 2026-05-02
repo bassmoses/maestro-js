@@ -21,8 +21,13 @@ export function nodeToNote(node: NoteNode): Note {
     fermata: node.fermata,
     breath: node.breath,
     triplet: node.triplet,
+    tupletRatio: node.tupletRatio,
     lyric: node.lyric,
     articulation: node.articulation,
+    ornament: node.ornament,
+    graceNote: node.graceNote,
+    chordSymbol: node.chordSymbol,
+    glissando: node.glissando,
     expression: node.expression,
   }
   return new Note(noteData)

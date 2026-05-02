@@ -109,19 +109,19 @@ export function validate(nodes: NoteNode[], timeSignature?: string): ValidationE
         let totalBeats = 0
         const seenChordGroups = new Set<number>()
         const seenTripletGroups = new Set<number>()
+        const tripletGroupBeats = new Map<number, number>()
 
         for (const node of measure) {
           if (node.isBarline) continue
 
           if (node.triplet) {
-            const group = node.tripletGroup!
-            if (!seenTripletGroups.has(group)) {
-              // Collect all nodes in this triplet group and sum their beats * 2/3
-              const groupNodes = measure.filter((n) => n.triplet && n.tripletGroup === group)
-              const rawBeats = groupNodes.reduce((s, n) => s + nodeBeats(n), 0)
-              totalBeats += rawBeats * (2 / 3)
-              seenTripletGroups.add(group)
+            if (node.tripletGroup == null) continue
+            if (!seenTripletGroups.has(node.tripletGroup)) {
+              seenTripletGroups.add(node.tripletGroup)
             }
+            // Accumulate beats per triplet group
+            const key = node.tripletGroup
+            tripletGroupBeats.set(key, (tripletGroupBeats.get(key) ?? 0) + nodeBeats(node))
           } else if (node.chord) {
             const group = node.chordGroup
             if (group !== undefined && !seenChordGroups.has(group)) {
@@ -134,6 +134,11 @@ export function validate(nodes: NoteNode[], timeSignature?: string): ValidationE
           } else {
             totalBeats += nodeBeats(node)
           }
+        }
+
+        // Add triplet group beats (raw beats * 2/3 per group)
+        for (const rawBeats of tripletGroupBeats.values()) {
+          totalBeats += rawBeats * (2 / 3)
         }
 
         const tolerance = 1e-9

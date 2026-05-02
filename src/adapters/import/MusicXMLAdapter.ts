@@ -14,7 +14,7 @@ import type { Clef } from '../../model/VoiceModel.js'
 
 // ─── Key signature table (fifths → key name) ────────────────────
 
-const FIFTHS_TO_KEY: Record<number, string> = {
+const FIFTHS_TO_KEY: { [key: number]: string } = {
   '-7': 'Cb',
   '-6': 'Gb',
   '-5': 'Db',
@@ -148,7 +148,17 @@ export class MusicXMLAdapter {
       },
     })
 
-    const parsed = parser.parse(xmlString) as AnyObj
+    let parsed: AnyObj
+    try {
+      if (!xmlString || typeof xmlString !== 'string') {
+        throw new TypeError('input must be a non-empty string')
+      }
+      parsed = parser.parse(xmlString) as AnyObj
+    } catch (err) {
+      throw new Error(`MusicXMLAdapter: failed to parse XML — ${(err as Error).message}`, {
+        cause: err,
+      })
+    }
     const root: AnyObj = parsed['score-partwise'] ?? {}
 
     // ── Metadata ──────────────────────────────────────────────────
@@ -232,7 +242,10 @@ export class MusicXMLAdapter {
       const partName: string = partNames[partId] ?? partId
 
       const part = score.addPart(partName)
-      let currentClef = globalClef
+      // Note: mid-score clef changes are not supported; the initial clef is used for the entire voice.
+      // We capture initialClef before iterating measures so that a clef change in measure 2+ does not
+      // retroactively change the voice's clef setting.
+      let initialClef: Clef = globalClef
 
       // Collect all notes across all measures (voice adds measure boundaries automatically)
       const allNotes: ParsedNote[] = []
@@ -243,10 +256,15 @@ export class MusicXMLAdapter {
         const attrs: AnyObj = measureEl['attributes'] ?? {}
         if (attrs['clef']) {
           const clefEl = attrs['clef']
-          currentClef = parseClef(
+          const measuredClef = parseClef(
             clefEl['sign'],
             clefEl['line'] ? Number(clefEl['line']) : undefined
           )
+          // Only update initialClef when we are in the very first measure
+          // (allNotes is still empty at that point)
+          if (allNotes.length === 0) {
+            initialClef = measuredClef
+          }
         }
 
         // Parse notes in this measure
@@ -302,6 +320,8 @@ export class MusicXMLAdapter {
           }
 
           // Dynamic
+          // Only note-attached <notations><dynamics> are parsed.
+          // Direction-level <direction><direction-type><dynamics> (used by Sibelius/Finale/MuseScore) are out of scope.
           let dynamic: Dynamic | null = null
           if (notations['dynamics']) {
             dynamic = parseDynamic(notations['dynamics'])
@@ -339,8 +359,8 @@ export class MusicXMLAdapter {
         }
       }
 
-      // Build the voice with collected notes
-      const voice = part.addVoice('default', currentClef)
+      // Build the voice with collected notes (use the initial clef from the first measure)
+      const voice = part.addVoice('default', initialClef)
 
       let chordGroup = 0
 

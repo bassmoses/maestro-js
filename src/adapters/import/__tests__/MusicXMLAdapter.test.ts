@@ -307,6 +307,18 @@ describe('MusicXMLAdapter.fromXML', () => {
       const notes = score.getParts()[0].getVoices()[0].getAllNotes()
       expect(notes[0].duration).toBe('s')
     })
+
+    it('parses 32nd note duration', () => {
+      const xml = buildMusicXML({
+        notesXml: `
+          <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>32nd</type></note>
+          <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><type>32nd</type></note>
+        `,
+      })
+      const score = MusicXMLAdapter.fromXML(xml)
+      const notes = score.getParts()[0].getVoices()[0].getAllNotes()
+      expect(notes[0].duration).toBe('t')
+    })
   })
 
   describe('accidentals', () => {
@@ -690,6 +702,54 @@ describe('MusicXMLAdapter.fromXML', () => {
       expect(score.title).toBe('XML Song')
       expect(score.key).toBe('G')
       expect(score.tempo).toBe(88)
+    })
+  })
+
+  describe('error handling', () => {
+    it('throws a useful error for malformed XML', () => {
+      // fast-xml-parser is permissive with malformed tags but we validate the input type/emptiness
+      expect(() => MusicXMLAdapter.fromXML('')).toThrow(/MusicXMLAdapter/)
+    })
+  })
+
+  describe('mid-score clef change', () => {
+    it('uses the initial clef from the first measure for the voice', () => {
+      // The voice is created with the clef from measure 1 (treble).
+      // A bass clef change in measure 2 should not affect the voice's initial clef.
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <work><work-title>Clef Change Test</work-title></work>
+  <part-list>
+    <score-part id="P1"><part-name>Piano</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+    </measure>
+    <measure number="2">
+      <attributes>
+        <clef><sign>F</sign><line>4</line></clef>
+      </attributes>
+      <note><pitch><step>G</step><octave>2</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>A</step><octave>2</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>B</step><octave>2</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>C</step><octave>3</octave></pitch><duration>1</duration><type>quarter</type></note>
+    </measure>
+  </part>
+</score-partwise>`
+      const score = MusicXMLAdapter.fromXML(xml)
+      const voice = score.getParts()[0].getVoices()[0]
+      // The voice's clef must be 'treble' (the initial clef from measure 1)
+      expect(voice.clef).toBe('treble')
     })
   })
 })

@@ -88,6 +88,7 @@
     ]
   },
   "dependencies": {
+    "fast-xml-parser": "^5.7.2",
     "jsdom": "^29.1.0",
     "midi-writer-js": "^3.2.1",
     "tone": "^15.1.22",

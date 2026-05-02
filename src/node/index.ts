@@ -30,3 +30,6 @@ export { MIDIAdapter } from '../adapters/export/MIDIAdapter.js'
 // ScoreJSON export/import
 export { ScoreJSONAdapter } from '../adapters/export/ScoreJSONAdapter.js'
 export type { ScoreJSON } from '../adapters/export/ScoreJSONAdapter.js'
+
+// MusicXML import
+export { MusicXMLAdapter } from '../adapters/import/MusicXMLAdapter.js'

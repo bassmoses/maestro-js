@@ -279,6 +279,22 @@ export class Song {
     return song
   }
 
+  /** Import a MusicXML string and return a new Song backed by the parsed Score. */
+  static async fromMusicXML(xmlString: string): Promise<Song> {
+    const { MusicXMLAdapter } = await import('../adapters/import/MusicXMLAdapter.js')
+    const score = MusicXMLAdapter.fromXML(xmlString)
+    const song = new Song({
+      tempo: score.tempo,
+      timeSignature: `${score.timeSignature.beats}/${durationToDenom(score.timeSignature.noteValue)}`,
+      key: score.key,
+      title: score.title,
+      composer: score.composer,
+    })
+    // Replace the internally built score with the imported one
+    song.score = score
+    return song
+  }
+
   /** Export as PNG buffer (requires `sharp` package: npm install sharp). */
   async exportPNG(options?: RenderOptions): Promise<Uint8Array> {
     const svg = this.exportSVG(options)

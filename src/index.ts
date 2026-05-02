@@ -38,3 +38,4 @@ export type { Timeline, TimelineEvent, NoteEvent, BeatEvent } from './scheduler/
 // Export adapters
 export { ScoreJSONAdapter } from './adapters/export/ScoreJSONAdapter.js'
 export type { ScoreJSON } from './adapters/export/ScoreJSONAdapter.js'
+export { MusicXMLAdapter } from './adapters/import/MusicXMLAdapter.js'

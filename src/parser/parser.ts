@@ -5,6 +5,7 @@ import type {
   Octave,
   DurationName,
   Dynamic,
+  Articulation,
   Token,
 } from './types.js'
 import { tokenize } from './tokenizer.js'
@@ -43,15 +44,18 @@ function parseNoteRaw(
   position: number,
   defaults: { slurred?: boolean; chord?: boolean; triplet?: boolean; tripletGroup?: number } = {}
 ): NoteNode {
-  // Regex: pitch (or R), optional accidental, optional octave, optional :duration[.], optional inline dynamic, optional "lyric"
+  // Regex: pitch (or R), optional accidental, optional octave, optional :duration[.],
+  // up to two optional inline modifiers (dynamic/fermata/articulation), optional "lyric"
   const match = raw.match(
-    /^([A-GR])(##|bb|#|b)?([0-8])?(?::([whqest])(\.)?)?(?:\(([^)]+)\))?(?:"([^"]*)")?$/
+    /^([A-GR])(##|bb|#|b)?([0-8])?(?::([whqest])(\.)?)?(?:\(([^)]+)\))?(?:\(([^)]+)\))?(?:"([^"]*)")?$/
   )
   if (!match) {
     throw new MaestroError(`Invalid note syntax: "${raw}"`, input, position, raw.length)
   }
 
-  const [, pitchRaw, accidentalRaw, octaveRaw, durRaw, dotRaw, dynRaw, lyricRaw] = match
+  const [, pitchRaw, accidentalRaw, octaveRaw, durRaw, dotRaw, mod1Raw, mod2Raw, lyricRaw] = match
+  // Combine modifier groups: support both orderings (articulation+fermata or fermata+articulation)
+  const modifiers = [mod1Raw, mod2Raw].filter((m): m is string => m !== undefined)
 
   const isRest = pitchRaw === 'R'
   const pitch: PitchName | null = isRest ? null : (pitchRaw as PitchName)
@@ -64,14 +68,17 @@ function parseNoteRaw(
   const duration: DurationName = (durRaw ?? 'q') as DurationName
   const dotted = dotRaw === '.'
 
-  // Check for fermata vs dynamic
+  // Check for fermata, articulation, vs dynamic across all modifier groups
   let dynamic: Dynamic | null = null
   let fermata = false
-  if (dynRaw !== undefined) {
-    if (dynRaw === 'fermata') {
+  let articulation: Articulation = null
+  for (const mod of modifiers) {
+    if (mod === 'fermata') {
       fermata = true
+    } else if (mod === 'staccato' || mod === 'accent' || mod === 'tenuto' || mod === 'marcato') {
+      articulation = mod as Articulation
     } else {
-      dynamic = parseDynamicString(dynRaw)
+      dynamic = parseDynamicString(mod)
     }
   }
 
@@ -91,6 +98,7 @@ function parseNoteRaw(
     tripletGroup: defaults.tripletGroup,
     fermata,
     lyric: lyricRaw ?? undefined,
+    articulation,
   }
 }
 

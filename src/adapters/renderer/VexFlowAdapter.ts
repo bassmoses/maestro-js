@@ -20,7 +20,7 @@ import {
 import type { Score } from '../../model/Score.js'
 import type { Note } from '../../model/Note.js'
 import type { Measure } from '../../model/Measure.js'
-import type { DurationName, Dynamic } from '../../model/types.js'
+import type { DurationName, Dynamic, Articulation as ArticulationType } from '../../model/types.js'
 import { durationToDenom } from '../../model/Duration.js'
 import type { RenderOptions, ThemeColors } from './types.js'
 import { DEFAULT_RENDER_OPTIONS, THEMES } from './types.js'
@@ -97,6 +97,7 @@ interface RenderNote {
   chordGroup?: number
   fermata: boolean
   lyric?: string
+  articulation: ArticulationType
   sourceNotes: Note[]
 }
 
@@ -130,6 +131,7 @@ function groupNotesForRender(notes: readonly Note[]): RenderNote[] {
           chordGroup: note.chordGroup,
           fermata: note.fermata,
           lyric: note.lyric,
+          articulation: note.articulation,
           sourceNotes: [note],
         }
       }
@@ -152,6 +154,7 @@ function groupNotesForRender(notes: readonly Note[]): RenderNote[] {
         isRest: note.isRest,
         fermata: note.fermata,
         lyric: note.lyric,
+        articulation: note.articulation,
         sourceNotes: [note],
       })
     }
@@ -626,6 +629,17 @@ function createVexStaveNotes(
     // Add fermata articulation above note
     if (rn.fermata) {
       staveNote.addModifier(new Articulation('a@a').setPosition(3), 0)
+    }
+
+    // Add articulation modifier
+    if (rn.articulation) {
+      const artMap: Record<string, string> = {
+        staccato: 'a.',
+        accent: 'a>',
+        tenuto: 'a-',
+        marcato: 'a^',
+      }
+      staveNote.addModifier(new Articulation(artMap[rn.articulation]), 0)
     }
 
     // Add lyric text below note

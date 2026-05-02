@@ -1,10 +1,12 @@
 import type { Token } from './types.js'
 import { MaestroError, suggestPitch } from './errors.js'
 
-// Matches a single note token: pitch (or R for rest), optional accidental, optional octave, optional :duration[.], optional inline dynamic, optional "lyric"
+// Matches a single note token: pitch (or R for rest), optional accidental, optional octave, optional :duration[.],
+// up to two optional inline modifiers (dynamic/fermata/articulation), optional "lyric"
 // e.g. C4:q, D#5:h., Bb3:e, R:q, C4:q(mp), C4:q(p<), C4, R:q (rest has no octave), C4:q"hello"
+// Two modifier groups allow combinations like C4:q(staccato)(fermata)
 const NOTE_PATTERN =
-  /^([A-GR])(##|bb|#|b)?([0-8])?(?::([whqest])(\.)?)?(?:\(([^)]+)\))?(?:"([^"]*)")?/
+  /^([A-GR])(##|bb|#|b)?([0-8])?(?::([whqest])(\.)?)?(?:\(([^)]+)\))?(?:\(([^)]+)\))?(?:"([^"]*)")?/
 
 /**
  * Determine if a `(` at position `pos` in `input` starts a SLUR (not a dynamic).

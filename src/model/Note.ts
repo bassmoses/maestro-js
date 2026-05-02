@@ -1,4 +1,12 @@
-import { NoteData, PitchName, Accidental, Octave, DurationName, Dynamic } from './types.js'
+import {
+  NoteData,
+  PitchName,
+  Accidental,
+  Octave,
+  DurationName,
+  Dynamic,
+  Articulation,
+} from './types.js'
 import { durationToBeats } from './Duration.js'
 import { pitchToMidi, midiToFrequency } from './Pitch.js'
 
@@ -16,6 +24,7 @@ export class Note implements NoteData {
   readonly fermata: boolean
   readonly triplet: boolean
   readonly lyric?: string
+  readonly articulation: Articulation
 
   constructor(data: NoteData) {
     this.pitch = data.pitch
@@ -31,6 +40,7 @@ export class Note implements NoteData {
     this.fermata = data.fermata ?? false
     this.triplet = data.triplet ?? false
     this.lyric = data.lyric
+    this.articulation = data.articulation ?? null
   }
 
   get beats(): number {

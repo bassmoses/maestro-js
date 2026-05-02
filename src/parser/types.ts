@@ -1,6 +1,13 @@
-import type { PitchName, Accidental, Octave, DurationName, Dynamic } from '../model/types.js'
+import type {
+  PitchName,
+  Accidental,
+  Octave,
+  DurationName,
+  Dynamic,
+  Articulation,
+} from '../model/types.js'
 
-export type { PitchName, Accidental, Octave, DurationName, Dynamic }
+export type { PitchName, Accidental, Octave, DurationName, Dynamic, Articulation }
 
 export type TokenType =
   | 'NOTE'
@@ -39,6 +46,7 @@ export interface NoteNode {
   repeatEnd?: boolean // :| marker
   daCapo?: boolean // D.C. marker
   lyric?: string // lyrics text attached to this note
+  articulation?: Articulation // articulation marking
 }
 
 export interface ValidationError {

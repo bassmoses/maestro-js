@@ -20,6 +20,14 @@ const DEFAULT_VELOCITY = 64 // mp default
 
 const FERMATA_MULTIPLIER = 2.0 // fermata doubles the note duration
 
+// Articulation effects: [durationMultiplier, velocityDelta]
+const ARTICULATION_EFFECTS: Record<string, [number, number]> = {
+  staccato: [0.5, 0],
+  accent: [1.0, 20],
+  tenuto: [1.0, 5],
+  marcato: [0.5, 30],
+}
+
 /**
  * Format a Note's pitch to a string like 'C4', 'D#5', 'Bb3', or null for rests.
  */
@@ -73,9 +81,13 @@ export class Scheduler {
           for (const note of measure.getNotes()) {
             const beats = durationToBeats(note.duration, note.dotted)
             const baseDurationSecs = beatsToSeconds(beats, tempo)
-            const durationSecs = note.fermata
+            const afterFermataSecs = note.fermata
               ? baseDurationSecs * FERMATA_MULTIPLIER
               : baseDurationSecs
+
+            // Apply articulation effects
+            const artEffect = note.articulation ? ARTICULATION_EFFECTS[note.articulation] : null
+            const durationSecs = artEffect ? afterFermataSecs * artEffect[0] : afterFermataSecs
 
             if (note.chord && note.chordGroup != null) {
               if (note.chordGroup !== currentChordGroup) {
@@ -100,12 +112,15 @@ export class Scheduler {
             // Compute time: measure start + offset within measure at current tempo
             const currentTime = measureStartTime + beatsToSeconds(localBeat, tempo)
 
+            const baseVelocity = dynamicToVelocity(note.dynamic)
+            const velocity = artEffect ? Math.min(127, baseVelocity + artEffect[1]) : baseVelocity
+
             const noteEvent: NoteEvent = {
               pitch: formatPitch(note),
               midi: note.midi,
               frequency: note.frequency,
               duration: durationSecs,
-              velocity: dynamicToVelocity(note.dynamic),
+              velocity,
               voice: voice.name,
               measure: measureNumber,
               beat: totalBeatsAccumulated,

@@ -7,6 +7,7 @@ import {
   Beam,
   StaveTie,
   Curve,
+  StaveHairpin,
   type RenderContext,
   VoiceMode,
   Dot,
@@ -87,6 +88,50 @@ function noteToVexDuration(note: Note): string {
   if (note.dotted) dur += 'd'
   if (note.isRest) dur += 'r'
   return dur
+}
+
+/** A hairpin run detected in a list of RenderNotes (index-based, not StaveNote-based). */
+interface HairpinRun {
+  startIdx: number
+  endIdx: number // inclusive
+  type: 'cresc' | 'decresc'
+}
+
+/**
+ * Find consecutive runs of cresc/decresc notes in a RenderNote array.
+ * Returns index ranges (inclusive) for each hairpin run.
+ * Pure function — no DOM dependency, fully unit-testable.
+ */
+function collectHairpinRuns(renderNotes: RenderNote[]): HairpinRun[] {
+  const runs: HairpinRun[] = []
+  let runType: 'cresc' | 'decresc' | null = null
+  let runStart = -1
+
+  for (let i = 0; i < renderNotes.length; i++) {
+    const dyn = renderNotes[i].dynamic
+    const isHairpin = dyn === 'cresc' || dyn === 'decresc'
+
+    if (isHairpin) {
+      if (runType === null) {
+        runType = dyn as 'cresc' | 'decresc'
+        runStart = i
+      } else if (dyn !== runType) {
+        runs.push({ startIdx: runStart, endIdx: i - 1, type: runType })
+        runType = dyn as 'cresc' | 'decresc'
+        runStart = i
+      }
+    } else if (runType !== null) {
+      runs.push({ startIdx: runStart, endIdx: i - 1, type: runType })
+      runType = null
+      runStart = -1
+    }
+  }
+
+  if (runType !== null) {
+    runs.push({ startIdx: runStart, endIdx: renderNotes.length - 1, type: runType })
+  }
+
+  return runs
 }
 
 /**
@@ -371,6 +416,11 @@ function renderAllVoices(
     lineIdx: number
     voiceIdx: number
   }> = []
+  const hairpinQueue: Array<{
+    firstNote: StaveNote
+    lastNote: StaveNote
+    type: 'cresc' | 'decresc'
+  }> = []
 
   // Track staves for grand staff connectors: [lineIndex][voiceIndex] = Stave
   const stavesByLine: Map<number, Stave[]> = new Map()
@@ -453,6 +503,7 @@ function renderAllVoices(
         theme,
         tieQueue,
         slurQueue,
+        hairpinQueue,
         li,
         vi,
         line.measureStartIndex
@@ -463,7 +514,7 @@ function renderAllVoices(
     }
   }
 
-  // Reset context for ties, slurs, and connectors
+  // Reset context for ties, slurs, connectors, and hairpins
   context.setFillStyle(theme.foreground)
   context.setStrokeStyle(theme.foreground)
 
@@ -483,6 +534,27 @@ function renderAllVoices(
     if (sl.startNote && sl.endNote) {
       const curve = new Curve(sl.startNote, sl.endNote ?? undefined, {})
       curve.setContext(context).draw()
+    }
+  }
+
+  // Draw hairpins (cresc/decresc) — text fallback if VexFlow hairpin throws
+  for (const hp of hairpinQueue) {
+    try {
+      const hairpin = new StaveHairpin(
+        { first_note: hp.firstNote, last_note: hp.lastNote },
+        hp.type === 'cresc' ? StaveHairpin.type.CRESC : StaveHairpin.type.DECRESC
+      )
+      hairpin.setContext(context).draw()
+    } catch {
+      // Fallback: annotate the first note with text if the visual hairpin fails
+      // (e.g. multi-voice layouts where note positioning is ambiguous)
+      try {
+        const label = hp.type === 'cresc' ? 'cresc.' : 'decresc.'
+        const annotation = new Annotation(label)
+        hp.firstNote.addModifier(annotation, 0)
+      } catch {
+        // Silently ignore if even text annotation fails
+      }
     }
   }
 
@@ -522,6 +594,11 @@ function renderMeasuresOnStave(
     endNote: StaveNote | null
     lineIdx: number
     voiceIdx: number
+  }>,
+  hairpinQueue: Array<{
+    firstNote: StaveNote
+    lastNote: StaveNote
+    type: 'cresc' | 'decresc'
   }>,
   lineIdx: number,
   voiceIdx: number,
@@ -574,6 +651,15 @@ function renderMeasuresOnStave(
       })
       slurStartNote = null
     }
+  }
+
+  // Collect hairpin runs via pure helper and map indices → StaveNotes
+  for (const run of collectHairpinRuns(allRenderNotes)) {
+    hairpinQueue.push({
+      firstNote: staveNotes[run.startIdx],
+      lastNote: staveNotes[run.endIdx],
+      type: run.type,
+    })
   }
 
   // Close any unclosed slur at end of line
@@ -718,5 +804,5 @@ function drawBeams(
 }
 
 // Re-export for use in tests
-export { groupNotesForRender, noteToVexKey, noteToVexDuration, DURATION_MAP }
-export type { RenderNote }
+export { groupNotesForRender, noteToVexKey, noteToVexDuration, DURATION_MAP, collectHairpinRuns }
+export type { RenderNote, HairpinRun }

@@ -4,7 +4,9 @@ import {
   noteToVexKey,
   noteToVexDuration,
   DURATION_MAP,
+  collectHairpinRuns,
 } from '../VexFlowAdapter.js'
+import type { HairpinRun, RenderNote } from '../VexFlowAdapter.js'
 import { Note } from '../../../model/Note.js'
 import type { NoteData } from '../../../model/types.js'
 
@@ -182,5 +184,102 @@ describe('VexFlowAdapter utilities', () => {
       const groups = groupNotesForRender(notes)
       expect(groups[0].accidentals).toEqual(['#', 'b'])
     })
+  })
+})
+
+// ─── collectHairpinRuns tests ────────────────────────────────────────────────
+
+function makeRenderNote(dynamic: RenderNote['dynamic']): RenderNote {
+  return {
+    keys: ['C/4'],
+    duration: 'q',
+    accidentals: [null],
+    dynamic,
+    tied: false,
+    slurred: false,
+    dotted: false,
+    isRest: false,
+    fermata: false,
+    articulation: undefined as unknown as RenderNote['articulation'],
+    sourceNotes: [],
+  }
+}
+
+describe('collectHairpinRuns', () => {
+  it('returns empty array for notes with no hairpin dynamics', () => {
+    const notes = [makeRenderNote('f'), makeRenderNote('p'), makeRenderNote(null)]
+    const runs: HairpinRun[] = collectHairpinRuns(notes)
+    expect(runs).toHaveLength(0)
+  })
+
+  it('collects a single cresc run', () => {
+    const notes = [
+      makeRenderNote('f'),
+      makeRenderNote('cresc'),
+      makeRenderNote('cresc'),
+      makeRenderNote('cresc'),
+      makeRenderNote('p'),
+    ]
+    const runs = collectHairpinRuns(notes)
+    expect(runs).toHaveLength(1)
+    expect(runs[0]).toEqual({ startIdx: 1, endIdx: 3, type: 'cresc' })
+  })
+
+  it('collects a single decresc run', () => {
+    const notes = [
+      makeRenderNote('f'),
+      makeRenderNote('decresc'),
+      makeRenderNote('decresc'),
+      makeRenderNote('p'),
+    ]
+    const runs = collectHairpinRuns(notes)
+    expect(runs).toHaveLength(1)
+    expect(runs[0]).toEqual({ startIdx: 1, endIdx: 2, type: 'decresc' })
+  })
+
+  it('closes a cresc run when a decresc starts', () => {
+    const notes = [
+      makeRenderNote('cresc'),
+      makeRenderNote('cresc'),
+      makeRenderNote('decresc'),
+      makeRenderNote('decresc'),
+    ]
+    const runs = collectHairpinRuns(notes)
+    expect(runs).toHaveLength(2)
+    expect(runs[0]).toEqual({ startIdx: 0, endIdx: 1, type: 'cresc' })
+    expect(runs[1]).toEqual({ startIdx: 2, endIdx: 3, type: 'decresc' })
+  })
+
+  it('closes a run at end of array when no non-hairpin note follows', () => {
+    const notes = [makeRenderNote('p'), makeRenderNote('cresc'), makeRenderNote('cresc')]
+    const runs = collectHairpinRuns(notes)
+    expect(runs).toHaveLength(1)
+    expect(runs[0]).toEqual({ startIdx: 1, endIdx: 2, type: 'cresc' })
+  })
+
+  it('handles a single hairpin note', () => {
+    const notes = [makeRenderNote('cresc')]
+    const runs = collectHairpinRuns(notes)
+    expect(runs).toHaveLength(1)
+    expect(runs[0]).toEqual({ startIdx: 0, endIdx: 0, type: 'cresc' })
+  })
+
+  it('returns empty array for empty input', () => {
+    expect(collectHairpinRuns([])).toHaveLength(0)
+  })
+
+  it('handles multiple separate runs', () => {
+    const notes = [
+      makeRenderNote('cresc'),
+      makeRenderNote('f'),
+      makeRenderNote('decresc'),
+      makeRenderNote('p'),
+      makeRenderNote('cresc'),
+    ]
+    const runs = collectHairpinRuns(notes)
+    expect(runs).toHaveLength(3)
+    expect(runs[0]).toEqual({ startIdx: 0, endIdx: 0, type: 'cresc' })
+    expect(runs[1]).toEqual({ startIdx: 2, endIdx: 2, type: 'decresc' })
+    expect(runs[2]).toEqual({ startIdx: 4, endIdx: 4, type: 'cresc' })
   })
 })

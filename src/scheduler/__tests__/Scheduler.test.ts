@@ -175,13 +175,15 @@ describe('Scheduler.buildTimeline', () => {
       expect(timeline[0].note.velocity).toBe(64)
     })
 
-    it('cresc maps to 80', () => {
+    it('single cresc note interpolates from mp (64) as start (no prior/following dynamic)', () => {
+      // Single cresc note: startVel=mp(64), endVel=f(96), t=0 → velocity=64
       const score = buildScore(parse('C4:q(cresc)'))
       const timeline = Scheduler.buildTimeline(score)
-      expect(timeline[0].note.velocity).toBe(80)
+      expect(timeline[0].note.velocity).toBe(64)
     })
 
-    it('decresc maps to 64', () => {
+    it('single decresc note interpolates from mp (64) as start (no prior/following dynamic)', () => {
+      // Single decresc note: startVel=mp(64), endVel=p(48), t=0 → velocity=64
       const score = buildScore(parse('C4:q(decresc)'))
       const timeline = Scheduler.buildTimeline(score)
       expect(timeline[0].note.velocity).toBe(64)

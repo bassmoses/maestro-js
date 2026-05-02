@@ -13,9 +13,12 @@ const DYNAMIC_VELOCITY: Record<string, number> = {
   f: 96,
   ff: 112,
   fff: 127,
-  cresc: 80, // TODO: interpolate cresc/decresc velocity across passages
-  decresc: 64, // TODO: interpolate cresc/decresc velocity across passages
 }
+
+// Default velocities for hairpin endpoints when no explicit dynamic is found
+const HAIRPIN_DEFAULT_START = 64 // mp — assume mp before a hairpin with no prior dynamic
+const HAIRPIN_CRESC_DEFAULT_END = 96 // f — cresc with no following dynamic ends at f
+const HAIRPIN_DECRESC_DEFAULT_END = 48 // p — decresc with no following dynamic ends at p
 
 const DEFAULT_VELOCITY = 64 // mp default
 
@@ -122,6 +125,7 @@ export class Scheduler {
               frequency: note.frequency,
               duration: durationSecs,
               velocity,
+              dynamic: note.dynamic ?? null,
               voice: voice.name,
               measure: measureNumber,
               beat: totalBeatsAccumulated,
@@ -156,7 +160,77 @@ export class Scheduler {
     // Sort by time ascending (stable)
     events.sort((a, b) => a.time - b.time)
 
+    // Post-process: interpolate velocities across cresc/decresc passages
+    Scheduler.interpolateHairpins(events)
+
     return events
+  }
+
+  /**
+   * Post-processing pass: find consecutive runs of cresc/decresc NoteEvents
+   * per voice and linearly interpolate their velocities between the surrounding
+   * explicit dynamics.
+   */
+  private static interpolateHairpins(events: TimelineEvent[]): void {
+    // Group events by voice to process each voice independently
+    const byVoice = new Map<string, TimelineEvent[]>()
+    for (const ev of events) {
+      const v = ev.note.voice
+      if (!byVoice.has(v)) byVoice.set(v, [])
+      byVoice.get(v)!.push(ev)
+    }
+
+    for (const voiceEvents of byVoice.values()) {
+      // voiceEvents are already sorted by time (inherited from the main sort)
+      const n = voiceEvents.length
+      let i = 0
+
+      while (i < n) {
+        const dyn = voiceEvents[i].note.dynamic
+        if (dyn !== 'cresc' && dyn !== 'decresc') {
+          i++
+          continue
+        }
+
+        // Found the start of a hairpin run — collect the entire run
+        const runType = dyn
+        const runStart = i
+        while (i < n && voiceEvents[i].note.dynamic === runType) {
+          i++
+        }
+        const runEnd = i // exclusive
+
+        const runLength = runEnd - runStart
+
+        // Look backward for the last explicit (non-hairpin) dynamic
+        let startVel = HAIRPIN_DEFAULT_START
+        for (let b = runStart - 1; b >= 0; b--) {
+          const d = voiceEvents[b].note.dynamic
+          if (d !== null && d !== 'cresc' && d !== 'decresc') {
+            startVel = DYNAMIC_VELOCITY[d] ?? HAIRPIN_DEFAULT_START
+            break
+          }
+        }
+
+        // Look forward for the next explicit (non-hairpin) dynamic
+        let endVel = runType === 'cresc' ? HAIRPIN_CRESC_DEFAULT_END : HAIRPIN_DECRESC_DEFAULT_END
+        for (let f = runEnd; f < n; f++) {
+          const d = voiceEvents[f].note.dynamic
+          if (d !== null && d !== 'cresc' && d !== 'decresc') {
+            endVel = DYNAMIC_VELOCITY[d] ?? endVel
+            break
+          }
+        }
+
+        // Linearly interpolate across the run
+        for (let k = 0; k < runLength; k++) {
+          const t = runLength === 1 ? 0 : k / (runLength - 1)
+          const rawVel = Math.round(startVel + (endVel - startVel) * t)
+          // Clamp to [16, 127]
+          voiceEvents[runStart + k].note.velocity = Math.max(16, Math.min(127, rawVel))
+        }
+      }
+    }
   }
 
   /**

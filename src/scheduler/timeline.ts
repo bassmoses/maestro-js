@@ -4,6 +4,7 @@ export interface NoteEvent {
   frequency: number | null
   duration: number // in seconds
   velocity: number // 0–127 based on dynamic
+  dynamic: string | null // raw dynamic string (e.g. 'p', 'f', 'cresc', 'decresc', null)
   voice: string
   measure: number
   beat: number

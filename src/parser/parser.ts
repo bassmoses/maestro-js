@@ -68,13 +68,16 @@ function parseNoteRaw(
   const duration: DurationName = (durRaw ?? 'q') as DurationName
   const dotted = dotRaw === '.'
 
-  // Check for fermata, articulation, vs dynamic across all modifier groups
+  // Check for fermata, breath, articulation, vs dynamic across all modifier groups
   let dynamic: Dynamic | null = null
   let fermata = false
+  let breath = false
   let articulation: Articulation = null
   for (const mod of modifiers) {
     if (mod === 'fermata') {
       fermata = true
+    } else if (mod === 'breath') {
+      breath = true
     } else if (mod === 'staccato' || mod === 'accent' || mod === 'tenuto' || mod === 'marcato') {
       articulation = mod as Articulation
     } else {
@@ -97,6 +100,7 @@ function parseNoteRaw(
     triplet: defaults.triplet ?? false,
     tripletGroup: defaults.tripletGroup,
     fermata,
+    breath,
     lyric: lyricRaw ?? undefined,
     articulation,
   }
@@ -211,6 +215,7 @@ function makeBarlineNode(opts?: {
   repeatStart?: boolean
   repeatEnd?: boolean
   daCapo?: boolean
+  rehearsalMark?: string
 }): NoteNode {
   return {
     type: 'note',
@@ -229,6 +234,7 @@ function makeBarlineNode(opts?: {
     repeatStart: opts?.repeatStart,
     repeatEnd: opts?.repeatEnd,
     daCapo: opts?.daCapo,
+    rehearsalMark: opts?.rehearsalMark,
   }
 }
 
@@ -296,6 +302,26 @@ export function parse(input: string): NoteNode[] {
 
       case 'DA_CAPO': {
         nodes.push(makeBarlineNode({ daCapo: true }))
+        break
+      }
+
+      case 'REHEARSAL_MARK': {
+        // Extract inner content: [A] -> 'A'
+        const mark = token.raw.slice(1, -1)
+        nodes.push(makeBarlineNode({ rehearsalMark: mark }))
+        break
+      }
+
+      case 'EXPRESSION_TEXT': {
+        // Extract inner content: {soli} -> 'soli'
+        const text = token.raw.slice(1, -1)
+        // Attach the expression to the last non-barline note
+        for (let j = nodes.length - 1; j >= 0; j--) {
+          if (!nodes[j].isBarline) {
+            nodes[j] = { ...nodes[j], expression: text }
+            break
+          }
+        }
         break
       }
     }

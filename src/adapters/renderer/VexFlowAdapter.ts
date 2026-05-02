@@ -151,8 +151,10 @@ interface RenderNote {
   isRest: boolean
   chordGroup?: number
   fermata: boolean
+  breath: boolean
   lyric?: string
   articulation: ArticulationType
+  expression: string | null
   sourceNotes: Note[]
 }
 
@@ -185,8 +187,10 @@ function groupNotesForRender(notes: readonly Note[]): RenderNote[] {
           isRest: false,
           chordGroup: note.chordGroup,
           fermata: note.fermata,
+          breath: note.breath,
           lyric: note.lyric,
           articulation: note.articulation,
+          expression: note.expression,
           sourceNotes: [note],
         }
       }
@@ -208,8 +212,10 @@ function groupNotesForRender(notes: readonly Note[]): RenderNote[] {
         dotted: note.dotted,
         isRest: note.isRest,
         fermata: note.fermata,
+        breath: note.breath,
         lyric: note.lyric,
         articulation: note.articulation,
+        expression: note.expression,
         sourceNotes: [note],
       })
     }
@@ -467,6 +473,16 @@ function renderAllVoices(
         }
         if (rep.endMeasure === lineEndMeasure) {
           stave.setEndBarType(Barline.type.REPEAT_END)
+        }
+      }
+
+      // Add rehearsal mark for the first measure on this line (if any)
+      const firstMeasureOnLine = line.measures[0]
+      if (firstMeasureOnLine?.rehearsalMark) {
+        try {
+          stave.setSection(firstMeasureOnLine.rehearsalMark, 0)
+        } catch {
+          // Silently ignore if VexFlow version does not support setSection
         }
       }
 
@@ -741,6 +757,19 @@ function createVexStaveNotes(
         Annotation.VerticalJustify.BOTTOM
       )
       staveNote.addModifier(lyricAnnotation, 0)
+    }
+
+    // Add breath mark (comma articulation) above note
+    if (rn.breath) {
+      staveNote.addModifier(new Articulation('a,').setPosition(3), 0)
+    }
+
+    // Add expression text (italic) above note
+    if (rn.expression) {
+      const exprAnnotation = new Annotation(rn.expression)
+        .setFont('Times', 11, 'italic')
+        .setVerticalJustification(Annotation.VerticalJustify.TOP)
+      staveNote.addModifier(exprAnnotation, 0)
     }
 
     return staveNote

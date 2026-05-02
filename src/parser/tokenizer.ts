@@ -64,13 +64,27 @@ export function tokenize(input: string): Token[] {
       continue
     }
 
-    // Chord: [...]:<duration>[.][(<dynamic>)]
+    // Rehearsal mark: [A], [B], [1], [12] — only letters/digits inside, no ':' after ']'
+    // Must be distinguished from chord tokens like [C4 E4 G4]:q
     if (input[i] === '[') {
       const start = i
       const end = input.indexOf(']', i)
       if (end === -1) {
-        throw new MaestroError('Unclosed chord bracket "[".', input, i, 1)
+        throw new MaestroError('Unclosed bracket "[".', input, i, 1)
       }
+      const inner = input.slice(start + 1, end)
+      // A rehearsal mark: 1–3 chars, no spaces, no note-letter+digit pattern.
+      // Chord inners always contain a note letter (A-G) directly followed by a digit (octave).
+      // Rehearsal marks may be all-letters ([A], [B]) or all-digits ([1], [12]).
+      const isRehearsalMark = /^[A-Za-z0-9]{1,3}$/.test(inner) && !/[A-G][0-8]/.test(inner)
+      if (isRehearsalMark) {
+        const raw = input.slice(start, end + 1)
+        tokens.push({ type: 'REHEARSAL_MARK', raw, position: start })
+        i = end + 1
+        continue
+      }
+
+      // Chord: [...]:<duration>[.][(<dynamic>)]
       // After ']', optionally consume :duration[.] and optional (dynamic)
       let j = end + 1
       if (input[j] === ':') {
@@ -102,13 +116,28 @@ export function tokenize(input: string): Token[] {
       continue
     }
 
-    // Triplet: {...}:<duration>[.]
+    // Expression text: {text} — freeform text label like {soli}, {tutti}, {a tempo}
+    // Must be distinguished from triplet tokens like {C4 D4 E4}:q
+    // An expression text token has no ':' immediately after the closing '}'
     if (input[i] === '{') {
       const start = i
       const end = input.indexOf('}', i)
       if (end === -1) {
-        throw new MaestroError('Unclosed triplet bracket "{".', input, i, 1)
+        throw new MaestroError('Unclosed brace "{".', input, i, 1)
       }
+      const inner = input.slice(start + 1, end)
+      const afterBrace = input[end + 1]
+      // Expression text: inner contains no note-like pattern and no ':' follows
+      const isTriplet = afterBrace === ':' || /^[A-G]/.test(inner.trimStart())
+      if (!isTriplet) {
+        // Expression text token
+        const raw = input.slice(start, end + 1)
+        tokens.push({ type: 'EXPRESSION_TEXT', raw, position: start })
+        i = end + 1
+        continue
+      }
+
+      // Triplet: {...}:<duration>[.]
       let j = end + 1
       if (input[j] === ':') {
         j++ // skip ':'

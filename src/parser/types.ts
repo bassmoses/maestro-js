@@ -19,6 +19,8 @@ export type TokenType =
   | 'REPEAT_START'
   | 'REPEAT_END'
   | 'DA_CAPO'
+  | 'REHEARSAL_MARK'
+  | 'EXPRESSION_TEXT'
 
 export interface Token {
   type: TokenType
@@ -42,11 +44,14 @@ export interface NoteNode {
   triplet: boolean
   tripletGroup?: number
   fermata: boolean
+  breath?: boolean // breath mark — brief pause before next note
   repeatStart?: boolean // |: marker
   repeatEnd?: boolean // :| marker
   daCapo?: boolean // D.C. marker
+  rehearsalMark?: string // rehearsal mark attached to this barline/measure
   lyric?: string // lyrics text attached to this note
   articulation?: Articulation // articulation marking
+  expression?: string // expression text attached to this note
 }
 
 export interface ValidationError {

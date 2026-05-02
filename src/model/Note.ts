@@ -22,9 +22,11 @@ export class Note implements NoteData {
   readonly chord: boolean
   readonly chordGroup?: number
   readonly fermata: boolean
+  readonly breath: boolean
   readonly triplet: boolean
   readonly lyric?: string
   readonly articulation: Articulation
+  readonly expression: string | null
 
   constructor(data: NoteData) {
     this.pitch = data.pitch
@@ -38,9 +40,11 @@ export class Note implements NoteData {
     this.chord = data.chord
     this.chordGroup = data.chordGroup
     this.fermata = data.fermata ?? false
+    this.breath = data.breath ?? false
     this.triplet = data.triplet ?? false
     this.lyric = data.lyric
     this.articulation = data.articulation ?? null
+    this.expression = data.expression ?? null
   }
 
   get beats(): number {

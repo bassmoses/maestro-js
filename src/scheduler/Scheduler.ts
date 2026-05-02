@@ -23,6 +23,7 @@ const HAIRPIN_DECRESC_DEFAULT_END = 48 // p — decresc with no following dynami
 const DEFAULT_VELOCITY = 64 // mp default
 
 const FERMATA_MULTIPLIER = 2.0 // fermata doubles the note duration
+const BREATH_PAUSE_SECS = 0.1 // 100ms pause inserted after a breath mark note
 
 // Articulation effects: [durationMultiplier, velocityDelta]
 const ARTICULATION_EFFECTS: Record<NonNullable<Articulation>, [number, number]> = {
@@ -72,6 +73,8 @@ export class Scheduler {
         // This correctly handles tempo changes between measures
         let measureStartTime = 0
         let totalBeatsAccumulated = 0
+        // Accumulated breath pause offset (seconds) — added to all subsequent note times
+        let breathOffset = 0
 
         for (const measureIndex of measureOrder) {
           if (measureIndex >= measures.length) continue
@@ -113,8 +116,8 @@ export class Scheduler {
               }
             }
 
-            // Compute time: measure start + offset within measure at current tempo
-            const currentTime = measureStartTime + beatsToSeconds(localBeat, tempo)
+            // Compute time: measure start + offset within measure at current tempo + accumulated breath pauses
+            const currentTime = measureStartTime + beatsToSeconds(localBeat, tempo) + breathOffset
 
             const baseVelocity = dynamicToVelocity(note.dynamic)
             const velocity = artEffect ? Math.min(127, baseVelocity + artEffect[1]) : baseVelocity
@@ -141,6 +144,10 @@ export class Scheduler {
             if (!note.chord) {
               totalBeatsAccumulated += beats
               localBeat += beats
+              // After a breath note, insert a 100ms gap before the next note
+              if (note.breath) {
+                breathOffset += BREATH_PAUSE_SECS
+              }
             }
           }
 

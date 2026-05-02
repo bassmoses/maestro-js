@@ -9,11 +9,13 @@ export interface TimeSignature {
 
 export class Measure {
   readonly timeSignature: TimeSignature
+  readonly rehearsalMark: string | null
   private notes: Note[]
   private _usedBeats: number = 0
 
-  constructor(timeSignature: TimeSignature) {
+  constructor(timeSignature: TimeSignature, rehearsalMark: string | null = null) {
     this.timeSignature = timeSignature
+    this.rehearsalMark = rehearsalMark
     this.notes = []
   }
 

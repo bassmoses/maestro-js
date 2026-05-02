@@ -56,6 +56,7 @@ export interface ScoreJSONVoice {
 
 export interface ScoreJSONMeasure {
   notes: ScoreJSONNote[]
+  rehearsalMark?: string
 }
 
 export interface ScoreJSONNote {
@@ -70,9 +71,11 @@ export interface ScoreJSONNote {
   chord?: boolean
   chordGroup?: number
   fermata?: boolean
+  breath?: boolean
   triplet?: boolean
   lyric?: string
   articulation?: Articulation
+  expression?: string
 }
 
 export interface ScoreJSONTempoChange {
@@ -107,7 +110,9 @@ export class ScoreJSONAdapter {
             notes.push(noteToJSON(note))
           }
 
-          measures.push({ notes })
+          const measureJSON: ScoreJSONMeasure = { notes }
+          if (measure.rehearsalMark) measureJSON.rehearsalMark = measure.rehearsalMark
+          measures.push(measureJSON)
         }
 
         voices.push({
@@ -184,6 +189,9 @@ export class ScoreJSONAdapter {
         const voice = part.addVoice(voiceJSON.name, voiceJSON.clef)
 
         for (const measureJSON of voiceJSON.measures) {
+          if (measureJSON.rehearsalMark) {
+            voice.setPendingRehearsalMark(measureJSON.rehearsalMark)
+          }
           for (const noteJSON of measureJSON.notes) {
             const note = jsonToNote(noteJSON)
             voice.addNote(note, score.timeSignature)
@@ -232,9 +240,11 @@ function noteToJSON(note: Note): ScoreJSONNote {
   if (note.chord) result.chord = true
   if (note.chordGroup != null) result.chordGroup = note.chordGroup
   if (note.fermata) result.fermata = true
+  if (note.breath) result.breath = true
   if (note.triplet) result.triplet = true
   if (note.lyric) result.lyric = note.lyric
   if (note.articulation) result.articulation = note.articulation
+  if (note.expression) result.expression = note.expression
 
   return result
 }
@@ -252,9 +262,11 @@ function jsonToNote(json: ScoreJSONNote): Note {
     chord: json.chord ?? false,
     chordGroup: json.chordGroup,
     fermata: json.fermata ?? false,
+    breath: json.breath ?? false,
     triplet: json.triplet ?? false,
     lyric: json.lyric,
     articulation: (json.articulation ?? null) as Articulation,
+    expression: json.expression,
   }
   return new Note(data)
 }

@@ -32,11 +32,19 @@ export class VoiceModel {
   readonly clef: Clef
   private measures: Measure[]
   private _currentChordGroup: number = -1
+  private _pendingRehearsalMark: string | null = null
 
   constructor(name: string, clef: Clef) {
     this.name = name
     this.clef = clef
     this.measures = []
+  }
+
+  /**
+   * Set a rehearsal mark to be attached to the next measure created.
+   */
+  setPendingRehearsalMark(mark: string): void {
+    this._pendingRehearsalMark = mark
   }
 
   /**
@@ -60,7 +68,9 @@ export class VoiceModel {
     let current = this.measures[this.measures.length - 1]
 
     if (!current || current.isFull) {
-      current = new Measure(timeSignature)
+      const mark = this._pendingRehearsalMark
+      this._pendingRehearsalMark = null
+      current = new Measure(timeSignature, mark)
       this.measures.push(current)
       this._currentChordGroup = -1
     }
@@ -100,7 +110,9 @@ export class VoiceModel {
     while (remainingBeats > 1e-9) {
       let current = this.measures[this.measures.length - 1]
       if (!current || current.isFull) {
-        current = new Measure(timeSignature)
+        const mark = this._pendingRehearsalMark
+        this._pendingRehearsalMark = null
+        current = new Measure(timeSignature, mark)
         this.measures.push(current)
       }
 

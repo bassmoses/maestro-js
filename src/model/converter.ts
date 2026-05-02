@@ -19,9 +19,11 @@ export function nodeToNote(node: NoteNode): Note {
     chord: node.chord,
     chordGroup: node.chordGroup,
     fermata: node.fermata,
+    breath: node.breath,
     triplet: node.triplet,
     lyric: node.lyric,
     articulation: node.articulation,
+    expression: node.expression,
   }
   return new Note(noteData)
 }
@@ -39,8 +41,13 @@ export function buildScore(nodes: NoteNode[], options?: Partial<ScoreOptions>): 
   const voice = part.addVoice('default', 'treble')
 
   for (const node of nodes) {
-    // Skip barline marker nodes
-    if (node.isBarline) continue
+    // Barline nodes: skip, but check for rehearsal marks
+    if (node.isBarline) {
+      if (node.rehearsalMark) {
+        voice.setPendingRehearsalMark(node.rehearsalMark)
+      }
+      continue
+    }
 
     const note = nodeToNote(node)
     voice.addNote(note, score.timeSignature)

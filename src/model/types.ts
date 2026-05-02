@@ -17,7 +17,9 @@ export interface NoteData {
   chord: boolean // part of a chord group
   chordGroup?: number // distinguishes separate chord groups
   fermata?: boolean // fermata hold
+  breath?: boolean // breath mark — brief pause before next note
   triplet?: boolean // part of a triplet group
   lyric?: string // lyrics text attached to this note
   articulation?: Articulation // articulation marking
+  expression?: string // expression text above note (e.g. 'soli', 'tutti')
 }

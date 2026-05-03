@@ -74,18 +74,22 @@ export function applyModifiers(
 
 export function createVexStaveNotes(
   renderNotes: RenderNote[],
+  clef: string,
   opts: Required<RenderOptions>
 ): StaveNote[] {
   const result: StaveNote[] = []
   let pendingGraceNotes: GraceNote[] = []
+  const vexClef = clef === 'treble-8' ? 'treble' : clef
 
   for (const rn of renderNotes) {
     if (rn.graceNote) {
-      pendingGraceNotes.push(new GraceNote({ keys: rn.keys, duration: '8', slash: true }))
+      pendingGraceNotes.push(
+        new GraceNote({ keys: rn.keys, duration: '8', slash: true, clef: vexClef })
+      )
       continue
     }
 
-    const staveNote = new StaveNote({ keys: rn.keys, duration: rn.duration })
+    const staveNote = new StaveNote({ keys: rn.keys, duration: rn.duration, clef: vexClef })
 
     if (pendingGraceNotes.length > 0) {
       staveNote.addModifier(new GraceNoteGroup(pendingGraceNotes), 0)

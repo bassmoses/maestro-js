@@ -5,6 +5,7 @@ import {
   Voice as VexVoice,
   Formatter,
   Beam,
+  Tuplet,
   StaveTie,
   Curve,
   StaveHairpin,
@@ -26,6 +27,40 @@ import { groupNotesForRender, type RenderNote } from './render-note.js'
 import { collectSpanners, buildRenderToStaveMap, type SpannerQueues } from './spanners.js'
 import { createVexStaveNotes } from './modifiers.js'
 import { installJsdomGlobals, createDetachedContainer, extractSVG } from './jsdom-utils.js'
+
+// Number of accidentals per key — used to compute extra stave width for key signature
+const KEY_ACCIDENTAL_COUNT: Record<string, number> = {
+  C: 0,
+  Am: 0,
+  G: 1,
+  Em: 1,
+  D: 2,
+  Bm: 2,
+  A: 3,
+  'F#m': 3,
+  E: 4,
+  'C#m': 4,
+  B: 5,
+  'G#m': 5,
+  'F#': 6,
+  'D#m': 6,
+  'C#': 7,
+  'A#m': 7,
+  F: 1,
+  Dm: 1,
+  Bb: 2,
+  Gm: 2,
+  Eb: 3,
+  Cm: 3,
+  Ab: 4,
+  Fm: 4,
+  Db: 5,
+  Bbm: 5,
+  Gb: 6,
+  Ebm: 6,
+  Cb: 7,
+  Abm: 7,
+}
 
 export interface RenderedScore {
   svg: string
@@ -155,8 +190,9 @@ function renderSystemLine(
     const isFirstVoice = vi === 0
     const isLastVoice = vi === voiceLayouts.length - 1
 
-    // Clef/time-sig extra width on the first measure of the first line
-    const firstMeasureExtra = isFirstLine ? 60 : 0
+    // Extra width for clef + time sig + key sig on first measure of first line
+    const keyAccidentals = KEY_ACCIDENTAL_COUNT[score.key] ?? 0
+    const firstMeasureExtra = isFirstLine ? 60 + keyAccidentals * 12 : 0
     const totalStaveWidth = opts.width - opts.padding * 2
     const measureWidth = (totalStaveWidth - firstMeasureExtra) / line.measures.length
 
@@ -173,6 +209,9 @@ function renderSystemLine(
 
       if (isFirstMeasure && isFirstLine) {
         stave.addClef(clef === 'treble-8' ? 'treble' : clef)
+        if (score.key && score.key !== 'C' && score.key !== 'Am') {
+          stave.addKeySignature(score.key)
+        }
         stave.addTimeSignature(
           `${score.timeSignature.beats}/${durationToDenom(score.timeSignature.noteValue)}`
         )
@@ -203,7 +242,7 @@ function renderSystemLine(
       if (isFirstVoice) firstVoiceStaves.push(stave)
       if (isLastVoice) lastVoiceStaves.push(stave)
 
-      renderMeasureOnStave(context, measure, stave, measureNumber, opts, queues)
+      renderMeasureOnStave(context, measure, stave, measureNumber, clef, opts, queues)
 
       xPos += w
     }
@@ -251,6 +290,7 @@ function renderMeasureOnStave(
   measure: Measure,
   stave: Stave,
   _measureNumber: number,
+  clef: string,
   opts: Required<RenderOptions>,
   queues: SpannerQueues
 ): void {
@@ -258,7 +298,7 @@ function renderMeasureOnStave(
 
   if (renderNotes.length === 0) return
 
-  const staveNotes = createVexStaveNotes(renderNotes, opts)
+  const staveNotes = createVexStaveNotes(renderNotes, clef, opts)
   const renderToStave = buildRenderToStaveMap(renderNotes)
 
   const localSpanners = collectSpanners(renderNotes, staveNotes, renderToStave)
@@ -280,6 +320,7 @@ function renderMeasureOnStave(
   vexVoice.draw(context, stave)
 
   drawBeams(context, staveNotes, renderNotes, renderToStave, [measure])
+  drawTuplets(context, staveNotes, renderNotes, renderToStave)
 }
 
 function drawBeams(
@@ -289,8 +330,13 @@ function drawBeams(
   renderToStave: number[],
   measures: readonly Measure[]
 ): void {
-  const beatsPerMeasure = measures[0]?.timeSignature.beats ?? 4
-  const beatBoundary = beatsPerMeasure > 3 ? 2 : beatsPerMeasure
+  const ts = measures[0]?.timeSignature
+  const beatsPerMeasure = ts?.beats ?? 4
+  const noteValue = ts?.noteValue ?? 'q'
+  // Compound meters (6/8, 9/8, 12/8): beam in groups of 3 eighth notes (dotted quarter = 1.5 beats)
+  // Simple meters: beam per half-measure (2 beats) or per measure if <= 3 beats
+  const isCompound = noteValue === 'e' && beatsPerMeasure % 3 === 0
+  const beatBoundary = isCompound ? 1.5 : beatsPerMeasure > 3 ? 2 : beatsPerMeasure
 
   // Pre-compute absolute beat positions of each measure boundary so beams
   // never cross a barline.
@@ -355,6 +401,38 @@ function drawBeams(
       // skip invalid beam — fresh context per system means no cross-stave corruption
     }
   }
+}
+
+function drawTuplets(
+  context: RenderContext,
+  staveNotes: StaveNote[],
+  renderNotes: RenderNote[],
+  renderToStave: number[]
+): void {
+  // Collect consecutive triplet notes into groups, then wrap each group in a Tuplet
+  let group: StaveNote[] = []
+  const flush = () => {
+    if (group.length >= 2) {
+      try {
+        new Tuplet(group).setContext(context).draw()
+      } catch {
+        // ignore — invalid tuplet (e.g. incomplete group)
+      }
+    }
+    group = []
+  }
+
+  for (let i = 0; i < renderNotes.length; i++) {
+    const rn = renderNotes[i]
+    const si = renderToStave[i]
+    if (si < 0) continue
+    if (rn.sourceNotes[0]?.triplet) {
+      group.push(staveNotes[si])
+    } else {
+      flush()
+    }
+  }
+  flush()
 }
 
 // ─── Spanners ────────────────────────────────────────────────────

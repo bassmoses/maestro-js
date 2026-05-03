@@ -270,7 +270,7 @@ function renderMeasureOnStave(
   const beatValue = durationToDenom(measure.timeSignature.noteValue ?? 'q')
 
   const vexVoice = new VexVoice({
-    numBeats: measure.totalBeats,
+    numBeats: measure.timeSignature.beats,
     beatValue: parseInt(beatValue),
   }).setMode(VoiceMode.SOFT)
 

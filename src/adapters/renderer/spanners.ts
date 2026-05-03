@@ -156,13 +156,16 @@ export function collectSpanners(
     slurs.push({ startNote: slurStartNote, endNote: staveNotes[staveNotes.length - 1] })
   }
 
-  const nonGraceNotes = renderNotes.filter((rn) => !rn.graceNote)
-  for (const run of collectHairpinRuns(nonGraceNotes)) {
-    hairpins.push({
-      firstNote: staveNotes[run.startIdx],
-      lastNote: staveNotes[run.endIdx],
-      type: run.type,
-    })
+  for (const run of collectHairpinRuns(renderNotes)) {
+    const firstSi = renderToStave[run.startIdx]
+    const lastSi = renderToStave[run.endIdx]
+    if (firstSi >= 0 && lastSi >= 0) {
+      hairpins.push({
+        firstNote: staveNotes[firstSi],
+        lastNote: staveNotes[lastSi],
+        type: run.type,
+      })
+    }
   }
 
   return { ties, slurs, hairpins, glissandos }

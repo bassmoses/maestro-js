@@ -142,6 +142,54 @@ describe('Node.js SVG Export', () => {
 
       expect(result.svg).toContain('<svg')
     })
+
+    it('should render staff lines on ALL stave lines in a multi-line score', () => {
+      // 9 measures with measuresPerLine=4 → 3 system lines, 9 staves total (one per measure)
+      const score = buildTestScore(
+        'C4:q D4:q E4:q F4:q | E4:q F4:q G4:q A4:q | G4:q A4:q B4:q C5:q | ' +
+          'B4:q C5:q D5:q E5:q | D5:q E5:q F5:q G5:q | F5:q G5:q A5:q B5:q | ' +
+          'A5:q B5:q C6:q D6:q | C5:q D5:q E5:q F5:q | G4:q A4:q B4:q C5:q'
+      )
+      const result = VexFlowAdapter.renderToSVG(score, { measuresPerLine: 4 })
+
+      // 9 measures = 9 vf-stave groups (one per measure)
+      const staveGroupCount = (result.svg.match(/class="vf-stave"/g) ?? []).length
+      expect(staveGroupCount).toBe(9)
+
+      // Every stave group must contain <path> elements (the 5 horizontal staff lines)
+      const staveSegments = result.svg.split('class="vf-stave"')
+      for (let i = 1; i < staveSegments.length; i++) {
+        const nextStave = staveSegments[i].indexOf('class="vf-stave"')
+        const segment = nextStave >= 0 ? staveSegments[i].slice(0, nextStave) : staveSegments[i]
+        expect(segment).toContain('<path')
+      }
+    })
+
+    it('should render staff lines on both lines of a 5-measure score (4+1 split)', () => {
+      const score = buildTestScore(
+        'C4:q D4:q E4:q F4:q | G4:q A4:q B4:q C5:q | ' +
+          'D5:q E5:q F5:q G5:q | A5:q B5:q C6:q D6:q | E4:q F4:q G4:q A4:q'
+      )
+      const result = VexFlowAdapter.renderToSVG(score, { measuresPerLine: 4 })
+
+      // 5 measures = 5 vf-stave groups
+      const staveGroupCount = (result.svg.match(/class="vf-stave"/g) ?? []).length
+      expect(staveGroupCount).toBe(5)
+
+      const staveSegments = result.svg.split('class="vf-stave"')
+      for (let i = 1; i < staveSegments.length; i++) {
+        const nextStave = staveSegments[i].indexOf('class="vf-stave"')
+        const segment = nextStave >= 0 ? staveSegments[i].slice(0, nextStave) : staveSegments[i]
+        expect(segment).toContain('<path')
+      }
+    })
+
+    it('should set valid CSS dimensions (with px units) on the SVG element', () => {
+      const score = buildTestScore('C4:q D4:q E4:q F4:q')
+      const result = VexFlowAdapter.renderToSVG(score)
+      expect(result.svg).toMatch(/width="\d+"/)
+      expect(result.svg).toMatch(/height="\d+"/)
+    })
   })
 
   describe('Song.exportSVG', () => {

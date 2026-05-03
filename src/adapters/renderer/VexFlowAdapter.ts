@@ -10,232 +10,22 @@ import {
   StaveHairpin,
   type RenderContext,
   VoiceMode,
-  Dot,
-  Accidental as VexAccidental,
   Annotation,
-  Articulation,
   Barline,
   StaveConnector,
-  Ornament as VexOrnament,
-  GraceNote,
-  GraceNoteGroup,
 } from 'vexflow'
 
 import type { Score } from '../../model/Score.js'
-import type { Note } from '../../model/Note.js'
 import type { Measure } from '../../model/Measure.js'
-import type {
-  DurationName,
-  Dynamic,
-  Articulation as ArticulationType,
-  Ornament as OrnamentType,
-} from '../../model/types.js'
 import { durationToDenom } from '../../model/Duration.js'
 import type { RenderOptions, ThemeColors } from './types.js'
 import { DEFAULT_RENDER_OPTIONS, THEMES } from './types.js'
 import { buildScoreLayout, type VoiceLayout } from './StaveBuilder.js'
-
-// Map Maestro duration names to VexFlow duration strings
-const DURATION_MAP: Record<DurationName, string> = {
-  w: 'w',
-  h: 'h',
-  q: 'q',
-  e: '8',
-  s: '16',
-  t: '32',
-}
-
-// Map Maestro accidentals to VexFlow accidental strings
-const ACCIDENTAL_MAP: Record<string, string> = {
-  '#': '#',
-  b: 'b',
-  '##': '##',
-  bb: 'bb',
-}
-
-// Map Maestro articulation types to VexFlow articulation codes
-const ARTICULATION_MAP: Record<string, string> = {
-  staccato: 'a.',
-  accent: 'a>',
-  tenuto: 'a-',
-  marcato: 'a^',
-}
-
-// Map ornament types to VexFlow ornament codes
-const ORNAMENT_MAP: Record<string, string> = {
-  trill: 'tr',
-  mordent: 'mordent',
-  turn: 'turn',
-}
-
-// Map dynamic markings to VexFlow TextDynamics strings
-const DYNAMIC_MAP: Record<Dynamic, string> = {
-  ppp: 'ppp',
-  pp: 'pp',
-  p: 'p',
-  mp: 'mp',
-  mf: 'mf',
-  f: 'f',
-  ff: 'ff',
-  fff: 'fff',
-  cresc: 'cresc',
-  decresc: 'decresc',
-}
-
-/**
- * Convert a Maestro Note to a VexFlow pitch key string.
- * VexFlow format: "C/4", "D#/5", "Bb/3", "B/4" (note/octave)
- */
-function noteToVexKey(note: Note): string {
-  if (note.isRest) {
-    return `B/4` // rest position
-  }
-  const acc = note.accidental ?? ''
-  return `${note.pitch}${acc}/${note.octave}`
-}
-
-/**
- * Convert a Maestro Note to a VexFlow duration string.
- * Handles dotted notes and rests.
- */
-function noteToVexDuration(note: Note): string {
-  let dur = DURATION_MAP[note.duration]
-  if (note.dotted) dur += 'd'
-  if (note.isRest) dur += 'r'
-  return dur
-}
-
-/** A hairpin run detected in a list of RenderNotes (index-based, not StaveNote-based). */
-interface HairpinRun {
-  startIdx: number
-  endIdx: number // inclusive
-  type: 'cresc' | 'decresc'
-}
-
-/**
- * Find consecutive runs of cresc/decresc notes in a RenderNote array.
- * Returns index ranges (inclusive on both ends) for each hairpin run.
- * That is, `staveNotes[run.endIdx]` is the last note included in the run,
- * not a one-past-the-end sentinel.
- * Pure function — no DOM dependency, fully unit-testable.
- */
-function collectHairpinRuns(renderNotes: RenderNote[]): HairpinRun[] {
-  const runs: HairpinRun[] = []
-  let runType: 'cresc' | 'decresc' | null = null
-  let runStart = -1
-
-  for (let i = 0; i < renderNotes.length; i++) {
-    const dyn = renderNotes[i].dynamic
-    const isHairpin = dyn === 'cresc' || dyn === 'decresc'
-
-    if (isHairpin) {
-      if (runType === null) {
-        runType = dyn as 'cresc' | 'decresc'
-        runStart = i
-      } else if (dyn !== runType) {
-        runs.push({ startIdx: runStart, endIdx: i - 1, type: runType })
-        runType = dyn as 'cresc' | 'decresc'
-        runStart = i
-      }
-    } else if (runType !== null) {
-      runs.push({ startIdx: runStart, endIdx: i - 1, type: runType })
-      runType = null
-      runStart = -1
-    }
-  }
-
-  if (runType !== null) {
-    runs.push({ startIdx: runStart, endIdx: renderNotes.length - 1, type: runType })
-  }
-
-  return runs
-}
-
-/**
- * Group consecutive chord notes into a single VexFlow StaveNote with multiple keys.
- * Returns an array of "render items": each is either a single note or a chord group.
- */
-interface RenderNote {
-  keys: string[]
-  duration: string
-  accidentals: (string | null)[]
-  dynamic: Dynamic | null
-  tied: boolean
-  slurred: boolean
-  dotted: boolean
-  isRest: boolean
-  chordGroup?: number
-  fermata: boolean
-  breath: boolean
-  lyric?: string
-  articulation: ArticulationType
-  ornament: OrnamentType
-  graceNote: boolean
-  chordSymbol?: string
-  glissando: boolean
-  expression?: string
-  sourceNotes: Note[]
-}
-
-/** Build a RenderNote from a single Note model object. */
-function noteToRenderNote(note: Note, isRest = note.isRest): RenderNote {
-  return {
-    keys: [noteToVexKey(note)],
-    duration: noteToVexDuration(note),
-    accidentals: [note.accidental ? (ACCIDENTAL_MAP[note.accidental] ?? null) : null],
-    dynamic: note.dynamic,
-    tied: note.tied,
-    slurred: note.slurred,
-    dotted: note.dotted,
-    isRest,
-    chordGroup: note.chordGroup,
-    fermata: note.fermata,
-    breath: note.breath,
-    lyric: note.lyric,
-    articulation: note.articulation,
-    ornament: note.ornament,
-    graceNote: note.graceNote,
-    chordSymbol: note.chordSymbol,
-    glissando: note.glissando,
-    expression: note.expression,
-    sourceNotes: [note],
-  }
-}
-
-function groupNotesForRender(notes: readonly Note[]): RenderNote[] {
-  const result: RenderNote[] = []
-  let currentChordGroup: number | undefined
-  let currentChord: RenderNote | null = null
-
-  for (const note of notes) {
-    if (note.chord && note.chordGroup != null) {
-      if (note.chordGroup === currentChordGroup && currentChord) {
-        // Add key to existing chord
-        currentChord.keys.push(noteToVexKey(note))
-        currentChord.accidentals.push(
-          note.accidental ? (ACCIDENTAL_MAP[note.accidental] ?? null) : null
-        )
-        currentChord.sourceNotes.push(note)
-      } else {
-        // Start new chord group
-        if (currentChord) result.push(currentChord)
-        currentChordGroup = note.chordGroup
-        currentChord = noteToRenderNote(note, false)
-      }
-    } else {
-      // Flush any pending chord
-      if (currentChord) {
-        result.push(currentChord)
-        currentChord = null
-        currentChordGroup = undefined
-      }
-      result.push(noteToRenderNote(note))
-    }
-  }
-
-  if (currentChord) result.push(currentChord)
-  return result
-}
+import { BEAMABLE_DURATIONS } from './vex-maps.js'
+import { groupNotesForRender, type RenderNote } from './render-note.js'
+import { collectSpanners, buildRenderToStaveMap, type SpannerQueues } from './spanners.js'
+import { createVexStaveNotes } from './modifiers.js'
+import { installJsdomGlobals, createDetachedContainer, extractSVG } from './jsdom-utils.js'
 
 export interface RenderedScore {
   svg: string
@@ -246,720 +36,424 @@ export interface RenderedScore {
 /**
  * Main VexFlow adapter — renders a Score model to SVG.
  * Works in both browser (DOM element target) and Node (SVG string export).
+ *
+ * One renderer (= one SVG element) is created per system line, matching
+ * the VexFlow idiom from the working experiment. This prevents the shared
+ * SVG context's groupAttributes stack from becoming corrupted across staves.
  */
 export class VexFlowAdapter {
-  /**
-   * Render a score to an HTML element.
-   */
   static render(score: Score, target: HTMLElement, options: RenderOptions = {}): void {
     const opts = { ...DEFAULT_RENDER_OPTIONS, ...options }
     const theme = THEMES[opts.theme]
-    const { voiceLayouts, totalHeight } = buildScoreLayout(score, opts)
+    const { voiceLayouts, numLines, systemHeight, titleHeight } = buildScoreLayout(score, opts)
 
-    // Create VexFlow renderer targeting the DOM element
-    const renderer = new Renderer(target as HTMLDivElement, Renderer.Backends.SVG)
-    renderer.resize(opts.width, totalHeight)
-    const context = renderer.getContext()
+    target.style.backgroundColor = theme.background
 
-    applyTheme(context, target, theme)
-    renderTitle(context, score, opts, theme)
-    renderAllVoices(context, score, voiceLayouts, opts, theme)
+    // Title rendered into a small dedicated div above the systems
+    if (score.title || score.composer) {
+      const titleDiv = document.createElement('div')
+      titleDiv.style.width = `${opts.width}px`
+      titleDiv.style.height = `${titleHeight}px`
+      titleDiv.style.position = 'relative'
+      target.appendChild(titleDiv)
+
+      const titleRenderer = new Renderer(titleDiv, Renderer.Backends.SVG)
+      titleRenderer.resize(opts.width, titleHeight)
+      const ctx = titleRenderer.getContext()
+      ctx.setFillStyle(theme.titleColor)
+      ctx.setStrokeStyle(theme.titleColor)
+      renderTitleInto(ctx, score, opts, theme)
+    }
+
+    // One div + renderer per system line
+    for (let li = 0; li < numLines; li++) {
+      const systemDiv = document.createElement('div')
+      systemDiv.style.width = `${opts.width}px`
+      systemDiv.style.height = `${systemHeight}px`
+      target.appendChild(systemDiv)
+
+      const renderer = new Renderer(systemDiv, Renderer.Backends.SVG)
+      renderer.resize(opts.width, systemHeight)
+      const context = renderer.getContext()
+      context.setFillStyle(theme.foreground)
+      context.setStrokeStyle(theme.foreground)
+
+      renderSystemLine(context, score, voiceLayouts, li, opts, theme)
+    }
   }
 
-  /**
-   * Render a score to an SVG string (for Node.js or exportSVG).
-   * In Node.js, uses jsdom to provide a DOM environment.
-   */
   static renderToSVG(score: Score, options: RenderOptions = {}): RenderedScore {
     const opts = { ...DEFAULT_RENDER_OPTIONS, ...options }
     const theme = THEMES[opts.theme]
-    const { voiceLayouts, totalHeight } = buildScoreLayout(score, opts)
+    const { voiceLayouts, numLines, systemHeight, titleHeight } = buildScoreLayout(score, opts)
 
-    // If no native DOM, install jsdom globals for VexFlow
     const needsJsdom = typeof document === 'undefined'
     const cleanup = needsJsdom ? installJsdomGlobals() : null
 
     try {
-      const container = createDetachedContainer()
-      const renderer = new Renderer(container, Renderer.Backends.SVG)
-      renderer.resize(opts.width, totalHeight)
-      const context = renderer.getContext()
+      const parts: Array<{ svg: string; height: number }> = []
 
-      applyTheme(context, container, theme)
-      renderTitle(context, score, opts, theme)
-      renderAllVoices(context, score, voiceLayouts, opts, theme)
+      if (score.title || score.composer) {
+        const titleContainer = createDetachedContainer()
+        const titleRenderer = new Renderer(titleContainer, Renderer.Backends.SVG)
+        titleRenderer.resize(opts.width, titleHeight)
+        const ctx = titleRenderer.getContext()
+        ctx.setFillStyle(theme.titleColor)
+        ctx.setStrokeStyle(theme.titleColor)
+        renderTitleInto(ctx, score, opts, theme)
+        parts.push({ svg: extractSVG(titleContainer), height: titleHeight })
+      }
 
-      const svg = extractSVG(container)
-      return { svg, width: opts.width, height: totalHeight }
+      for (let li = 0; li < numLines; li++) {
+        const container = createDetachedContainer()
+        const renderer = new Renderer(container, Renderer.Backends.SVG)
+        renderer.resize(opts.width, systemHeight)
+        const context = renderer.getContext()
+        context.setFillStyle(theme.foreground)
+        context.setStrokeStyle(theme.foreground)
+
+        renderSystemLine(context, score, voiceLayouts, li, opts, theme)
+        parts.push({ svg: extractSVG(container), height: systemHeight })
+      }
+
+      const totalHeight = parts.reduce((sum, p) => sum + p.height, 0)
+      return {
+        svg: wrapSVGParts(parts, opts.width, totalHeight),
+        width: opts.width,
+        height: totalHeight,
+      }
     } finally {
       cleanup?.()
     }
   }
 }
 
-// ─── Internal rendering functions ───────────────────────────────
+// ─── Per-system rendering ────────────────────────────────────────
 
-function createDetachedContainer(): HTMLDivElement {
-  if (typeof document !== 'undefined') {
-    const div = document.createElement('div')
-    div.style.position = 'absolute'
-    div.style.left = '-9999px'
-    document.body.appendChild(div)
-    return div
-  }
-  // Fallback: try jsdom for Node.js
-  return createJsdomContainer()
-}
-
-// Lazily cached jsdom document for Node.js rendering
-let _jsdomDocument: Document | null = null
-let _jsdomWindow: Window | null = null
-
-/**
- * Release the cached JSDOM instance to free memory.
- * Call this in long-running server processes between render batches.
- */
-export function releaseJsdom(): void {
-  _jsdomDocument = null
-  _jsdomWindow = null
-}
-
-function getJsdomDocument(): Document {
-  if (_jsdomDocument) return _jsdomDocument
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { JSDOM } = require('jsdom') as typeof import('jsdom')
-    const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>')
-    _jsdomDocument = dom.window.document
-    _jsdomWindow = dom.window as unknown as Window
-    return _jsdomDocument
-  } catch {
-    throw new Error(
-      'DOM not available. Install "jsdom" for server-side SVG rendering: npm install jsdom'
-    )
-  }
-}
-
-function createJsdomContainer(): HTMLDivElement {
-  const doc = getJsdomDocument()
-  const div = doc.createElement('div')
-  doc.body.appendChild(div)
-  return div as unknown as HTMLDivElement
-}
-
-/**
- * Set jsdom globals temporarily so VexFlow can find `document`.
- * Returns a cleanup function to restore previous state.
- */
-function installJsdomGlobals(): () => void {
-  const doc = getJsdomDocument()
-  const prevDoc = (globalThis as Record<string, unknown>).document
-  const prevWin = (globalThis as Record<string, unknown>).window
-  ;(globalThis as Record<string, unknown>).document = doc
-  if (_jsdomWindow) {
-    ;(globalThis as Record<string, unknown>).window = _jsdomWindow
-  }
-  return () => {
-    if (prevDoc === undefined) {
-      delete (globalThis as Record<string, unknown>).document
-    } else {
-      ;(globalThis as Record<string, unknown>).document = prevDoc
-    }
-    if (prevWin === undefined) {
-      delete (globalThis as Record<string, unknown>).window
-    } else {
-      ;(globalThis as Record<string, unknown>).window = prevWin
-    }
-  }
-}
-
-function extractSVG(container: HTMLElement): string {
-  const svgEl = container.querySelector('svg')
-  if (!svgEl) return ''
-  const result = svgEl.outerHTML
-  // Clean up
-  if (container.parentNode) {
-    container.parentNode.removeChild(container)
-  }
-  return result
-}
-
-function applyTheme(context: RenderContext, container: HTMLElement, theme: ThemeColors): void {
-  container.style.backgroundColor = theme.background
-  context.setFillStyle(theme.foreground)
-  context.setStrokeStyle(theme.foreground)
-}
-
-function renderTitle(
-  context: RenderContext,
-  score: Score,
-  opts: Required<RenderOptions>,
-  theme: ThemeColors
-): void {
-  if (!score.title && !score.composer) return
-
-  context.save()
-  context.setFillStyle(theme.titleColor)
-
-  if (score.title) {
-    context.setFont('serif', 24, 'bold')
-    const titleWidth = context.measureText(score.title).width
-    context.fillText(score.title, (opts.width - titleWidth) / 2, opts.padding + 24)
-  }
-
-  if (score.composer) {
-    context.setFont('serif', 14, 'italic')
-    const composerWidth = context.measureText(score.composer).width
-    context.fillText(score.composer, opts.width - opts.padding - composerWidth, opts.padding + 45)
-  }
-
-  context.restore()
-}
-
-function renderAllVoices(
+function renderSystemLine(
   context: RenderContext,
   score: Score,
   voiceLayouts: VoiceLayout[],
+  li: number,
   opts: Required<RenderOptions>,
   theme: ThemeColors
 ): void {
-  const tieQueue: Array<{
-    firstNote: StaveNote
-    lastNote: StaveNote
-    firstIndex: number
-    lastIndex: number
-    voiceIdx: number
-  }> = []
-  const slurQueue: Array<{
-    startNote: StaveNote
-    endNote: StaveNote | null
-    lineIdx: number
-    voiceIdx: number
-  }> = []
-  const hairpinQueue: Array<{
-    firstNote: StaveNote
-    lastNote: StaveNote
-    type: 'cresc' | 'decresc'
-  }> = []
-  const glissandoQueue: Array<{
-    startNote: StaveNote
-    endNote: StaveNote | null
-  }> = []
+  const queues: SpannerQueues = { ties: [], slurs: [], hairpins: [], glissandos: [] }
 
-  // Track staves for grand staff connectors: [lineIndex][voiceIndex] = Stave
-  const stavesByLine: Map<number, Stave[]> = new Map()
+  // First-voice staves per measure index — used for grand staff connectors
+  const firstVoiceStaves: Stave[] = []
+  const lastVoiceStaves: Stave[] = []
 
   for (let vi = 0; vi < voiceLayouts.length; vi++) {
-    const voiceLayout = voiceLayouts[vi]
-    const { layout, clef } = voiceLayout
+    const { layout, clef, voiceName } = voiceLayouts[vi]
+    if (li >= layout.lines.length) continue
 
-    for (let li = 0; li < layout.lines.length; li++) {
-      const line = layout.lines[li]
-      const isFirstLine = li === 0
-      const staveX = opts.padding
-      const staveWidth = layout.staveWidth
+    const line = layout.lines[li]
+    if (line.measures.length === 0) continue
 
-      // Create VexFlow Stave
-      const stave = new Stave(staveX, line.y, staveWidth)
+    const isFirstLine = li === 0
+    const isFirstVoice = vi === 0
+    const isLastVoice = vi === voiceLayouts.length - 1
 
-      if (isFirstLine) {
+    // Clef/time-sig extra width on the first measure of the first line
+    const firstMeasureExtra = isFirstLine ? 60 : 0
+    const totalStaveWidth = opts.width - opts.padding * 2
+    const measureWidth = (totalStaveWidth - firstMeasureExtra) / line.measures.length
+
+    let xPos = opts.padding
+
+    for (let mi = 0; mi < line.measures.length; mi++) {
+      const measure = line.measures[mi]
+      const isFirstMeasure = mi === 0
+      const isLastMeasure = mi === line.measures.length - 1
+      const w = isFirstMeasure ? measureWidth + firstMeasureExtra : measureWidth
+      const measureNumber = line.measureStartIndex + mi
+
+      const stave = new Stave(xPos, line.y, w)
+
+      if (isFirstMeasure && isFirstLine) {
         stave.addClef(clef === 'treble-8' ? 'treble' : clef)
         stave.addTimeSignature(
           `${score.timeSignature.beats}/${durationToDenom(score.timeSignature.noteValue)}`
         )
-
-        // Add tempo marking on first voice only
-        if (vi === 0) {
+        if (isFirstVoice) {
           stave.setTempo({ duration: 'q', dots: 0, bpm: score.tempo }, 0)
         }
       }
 
-      if (opts.showBarNumbers && line.measureStartIndex > 1) {
-        stave.setText(`${line.measureStartIndex}`) // bar number at the top-left
+      if (opts.showBarNumbers && measureNumber > 1 && isFirstMeasure) {
+        stave.setText(`${measureNumber}`)
       }
 
-      // Add repeat barlines at stave line boundaries
-      // VexFlow supports begin/end barline types per stave, so we apply them
-      // only when the repeat boundary aligns with this stave line's start/end
-      const repeats = score.getRepeatSections()
-      const lineEndMeasure = line.measureStartIndex + line.measures.length - 1
-      for (const rep of repeats) {
-        if (rep.startMeasure === line.measureStartIndex) {
-          stave.setBegBarType(Barline.type.REPEAT_BEGIN)
-        }
-        if (rep.endMeasure === lineEndMeasure) {
-          stave.setEndBarType(Barline.type.REPEAT_END)
-        }
+      for (const rep of score.getRepeatSections()) {
+        if (rep.startMeasure === measureNumber) stave.setBegBarType(Barline.type.REPEAT_BEGIN)
+        if (rep.endMeasure === measureNumber) stave.setEndBarType(Barline.type.REPEAT_END)
       }
 
-      // Add rehearsal mark for the first measure on this line (if any)
-      const firstMeasureOnLine = line.measures[0]
-      if (firstMeasureOnLine?.rehearsalMark) {
-        try {
-          stave.setSection(firstMeasureOnLine.rehearsalMark, 0)
-        } catch {
-          // Silently ignore if VexFlow version does not support setSection
+      if (isLastMeasure && score.getRepeatSections().length === 0) {
+        // final barline only on the very last measure of the whole score
+        const allMeasures = score.getParts()[0]?.getVoices()[0]?.getMeasures() ?? []
+        if (measureNumber === allMeasures.length) {
+          stave.setEndBarType(Barline.type.END)
         }
       }
-
-      // Save context state before drawing to prevent leakage between staves
-      context.save()
-      context.setFillStyle(theme.foreground)
-      context.setStrokeStyle(theme.staveColor)
 
       stave.setContext(context).draw()
 
-      // Render part name label to the left of the stave
-      if (opts.showPartNames && isFirstLine && voiceLayout.voiceName) {
-        const label =
-          opts.partNameStyle === 'abbreviated'
-            ? voiceLayout.voiceName.charAt(0).toUpperCase()
-            : voiceLayout.voiceName
-        context.save()
-        context.setFont('serif', 14, 'bold')
-        context.setFillStyle(theme.foreground)
-        const labelWidth = context.measureText(label).width
-        context.fillText(label, staveX - labelWidth - 6, line.y + 22)
-        context.restore()
-      }
+      if (isFirstVoice) firstVoiceStaves.push(stave)
+      if (isLastVoice) lastVoiceStaves.push(stave)
 
-      // Track stave for grand staff connectors
-      if (!stavesByLine.has(li)) stavesByLine.set(li, [])
-      stavesByLine.get(li)!.push(stave)
+      renderMeasureOnStave(context, measure, stave, measureNumber, opts, queues)
 
-      // Render notes for all measures on this line
-      renderMeasuresOnStave(
-        context,
-        line.measures,
-        stave,
-        staveWidth,
-        opts,
-        theme,
-        tieQueue,
-        slurQueue,
-        hairpinQueue,
-        glissandoQueue,
-        li,
-        vi,
-        line.measureStartIndex
-      )
+      xPos += w
+    }
 
-      // Restore context state so next stave gets clean fill/stroke
+    // Part name label left of first stave
+    if (opts.showPartNames && isFirstLine && voiceName) {
+      const label =
+        opts.partNameStyle === 'abbreviated' ? voiceName.charAt(0).toUpperCase() : voiceName
+      context.save()
+      context.setFont('serif', 14, 'bold')
+      context.setFillStyle(theme.foreground)
+      const labelWidth = context.measureText(label).width
+      context.fillText(label, opts.padding - labelWidth - 6, line.y + 22)
       context.restore()
     }
   }
 
-  // Reset context for ties, slurs, connectors, and hairpins
+  // Spanners and grand staff connectors after all staves drawn
   context.setFillStyle(theme.foreground)
   context.setStrokeStyle(theme.foreground)
+  drawSpanners(context, queues)
 
-  // Draw ties — each entry is a pre-computed pair
-  for (const tieEntry of tieQueue) {
-    const tie = new StaveTie({
-      firstNote: tieEntry.firstNote,
-      lastNote: tieEntry.lastNote,
-      firstIndexes: [tieEntry.firstIndex],
-      lastIndexes: [tieEntry.lastIndex],
-    })
-    tie.setContext(context).draw()
-  }
-
-  // Draw slurs (curves)
-  for (const sl of slurQueue) {
-    if (sl.startNote && sl.endNote) {
-      const curve = new Curve(sl.startNote, sl.endNote ?? undefined, {})
-      curve.setContext(context).draw()
-    }
-  }
-
-  // Draw glissando lines between connected notes
-  for (const gl of glissandoQueue) {
-    if (gl.startNote && gl.endNote) {
-      // Draw a wavy/straight line between the two notes using a Curve
-      const curve = new Curve(gl.startNote, gl.endNote, {
-        cps: [
-          { x: 0, y: 5 },
-          { x: 0, y: 5 },
-        ],
-      })
-      curve.setContext(context).draw()
-    }
-  }
-
-  // Draw hairpins (cresc/decresc) — text fallback if VexFlow hairpin throws
-  for (const hp of hairpinQueue) {
-    try {
-      const hairpin = new StaveHairpin(
-        { first_note: hp.firstNote, last_note: hp.lastNote },
-        hp.type === 'cresc' ? StaveHairpin.type.CRESC : StaveHairpin.type.DECRESC
-      )
-      hairpin.setContext(context).draw()
-    } catch {
-      // Fallback: annotate the first note with text if the visual hairpin fails
-      // (e.g. multi-voice layouts where note positioning is ambiguous)
-      try {
-        const label = hp.type === 'cresc' ? 'cresc.' : 'decresc.'
-        const annotation = new Annotation(label)
-        hp.firstNote.addModifier(annotation, 0)
-      } catch {
-        // Silently ignore if even text annotation fails
+  if (
+    opts.grandStaff &&
+    voiceLayouts.length >= 2 &&
+    firstVoiceStaves.length > 0 &&
+    lastVoiceStaves.length > 0
+  ) {
+    for (let mi = 0; mi < firstVoiceStaves.length; mi++) {
+      const top = firstVoiceStaves[mi]
+      const bottom = lastVoiceStaves[mi]
+      if (mi === 0) {
+        new StaveConnector(top, bottom).setType('brace').setContext(context).draw()
+        new StaveConnector(top, bottom).setType('singleLeft').setContext(context).draw()
       }
-    }
-  }
-
-  // Draw grand staff connectors
-  if (opts.grandStaff && voiceLayouts.length >= 2) {
-    for (const [, staves] of stavesByLine) {
-      if (staves.length >= 2) {
-        const topStave = staves[0]
-        const bottomStave = staves[staves.length - 1]
-        const brace = new StaveConnector(topStave, bottomStave)
-        brace.setType('brace')
-        brace.setContext(context).draw()
-        const line = new StaveConnector(topStave, bottomStave)
-        line.setType('singleLeft')
-        line.setContext(context).draw()
-      }
+      new StaveConnector(top, bottom).setType('singleRight').setContext(context).draw()
     }
   }
 }
 
-function renderMeasuresOnStave(
+// ─── Notes & beams ───────────────────────────────────────────────
+
+function renderMeasureOnStave(
   context: RenderContext,
-  measures: readonly Measure[],
+  measure: Measure,
   stave: Stave,
-  staveWidth: number,
+  _measureNumber: number,
   opts: Required<RenderOptions>,
-  theme: ThemeColors,
-  tieQueue: Array<{
-    firstNote: StaveNote
-    lastNote: StaveNote
-    firstIndex: number
-    lastIndex: number
-    voiceIdx: number
-  }>,
-  slurQueue: Array<{
-    startNote: StaveNote
-    endNote: StaveNote | null
-    lineIdx: number
-    voiceIdx: number
-  }>,
-  hairpinQueue: Array<{
-    firstNote: StaveNote
-    lastNote: StaveNote
-    type: 'cresc' | 'decresc'
-  }>,
-  glissandoQueue: Array<{
-    startNote: StaveNote
-    endNote: StaveNote | null
-  }>,
-  lineIdx: number,
-  voiceIdx: number,
-  _measureStartIndex: number
+  queues: SpannerQueues
 ): void {
-  // Collect all notes across measures for this stave line
-  const allRenderNotes: RenderNote[] = []
-  for (const measure of measures) {
-    const grouped = groupNotesForRender(measure.getNotes())
-    allRenderNotes.push(...grouped)
-  }
+  const renderNotes = groupNotesForRender(measure.getNotes())
 
-  if (allRenderNotes.length === 0) return
+  if (renderNotes.length === 0) return
 
-  // Create StaveNotes (grace notes are absorbed as modifiers, so staveNotes may be shorter)
-  const staveNotes = createVexStaveNotes(allRenderNotes, theme, opts)
+  const staveNotes = createVexStaveNotes(renderNotes, opts)
+  const renderToStave = buildRenderToStaveMap(renderNotes)
 
-  // Build index mapping: renderNote index → staveNote index (grace notes map to -1)
-  const renderToStave: number[] = []
-  let staveIdx = 0
-  for (const rn of allRenderNotes) {
-    if (rn.graceNote) {
-      renderToStave.push(-1) // grace notes have no corresponding StaveNote
-    } else {
-      renderToStave.push(staveIdx++)
-    }
-  }
+  const localSpanners = collectSpanners(renderNotes, staveNotes, renderToStave)
+  queues.ties.push(...localSpanners.ties)
+  queues.slurs.push(...localSpanners.slurs)
+  queues.hairpins.push(...localSpanners.hairpins)
+  queues.glissandos.push(...localSpanners.glissandos)
 
-  // Track ties and slurs
-  let inSlur = false
-  let slurStartNote: StaveNote | null = null
-
-  for (let i = 0; i < allRenderNotes.length; i++) {
-    const rn = allRenderNotes[i]
-    const si = renderToStave[i]
-    if (si < 0) continue // skip grace notes
-
-    if (rn.tied) {
-      // Find the next non-grace renderNote's stave index
-      let nextSi = -1
-      for (let j = i + 1; j < allRenderNotes.length; j++) {
-        if (renderToStave[j] >= 0) {
-          nextSi = renderToStave[j]
-          break
-        }
-      }
-      if (nextSi >= 0 && nextSi < staveNotes.length) {
-        tieQueue.push({
-          firstNote: staveNotes[si],
-          lastNote: staveNotes[nextSi],
-          firstIndex: 0,
-          lastIndex: 0,
-          voiceIdx,
-        })
-      }
-    }
-
-    if (rn.slurred) {
-      if (!inSlur) {
-        inSlur = true
-        slurStartNote = staveNotes[si]
-      }
-    } else if (inSlur) {
-      inSlur = false
-      // Find the previous non-grace stave note
-      let prevSi = -1
-      for (let j = i - 1; j >= 0; j--) {
-        if (renderToStave[j] >= 0) {
-          prevSi = renderToStave[j]
-          break
-        }
-      }
-      if (prevSi >= 0) {
-        slurQueue.push({
-          startNote: slurStartNote!,
-          endNote: staveNotes[prevSi],
-          lineIdx,
-          voiceIdx,
-        })
-      }
-      slurStartNote = null
-    }
-  }
-
-  // Collect hairpin runs (only on non-grace notes)
-  const nonGraceRenderNotes = allRenderNotes.filter((rn) => !rn.graceNote)
-  for (const run of collectHairpinRuns(nonGraceRenderNotes)) {
-    hairpinQueue.push({
-      firstNote: staveNotes[run.startIdx],
-      lastNote: staveNotes[run.endIdx],
-      type: run.type,
-    })
-  }
-
-  // Close any unclosed slur at end of line
-  if (inSlur && slurStartNote) {
-    slurQueue.push({
-      startNote: slurStartNote,
-      endNote: staveNotes[staveNotes.length - 1],
-      lineIdx,
-      voiceIdx,
-    })
-  }
-
-  // Track glissando connections
-  for (let i = 0; i < allRenderNotes.length; i++) {
-    const si = renderToStave[i]
-    if (si < 0) continue
-    if (allRenderNotes[i].glissando) {
-      // Find next non-grace stave note
-      let nextSi = -1
-      for (let j = i + 1; j < allRenderNotes.length; j++) {
-        if (renderToStave[j] >= 0) {
-          nextSi = renderToStave[j]
-          break
-        }
-      }
-      if (nextSi >= 0 && nextSi < staveNotes.length) {
-        glissandoQueue.push({
-          startNote: staveNotes[si],
-          endNote: staveNotes[nextSi],
-        })
-      }
-    }
-  }
-
-  // Create VexFlow Voice and add notes
-  const totalBeats = measures.reduce((sum, m) => sum + m.totalBeats, 0)
-  const beatValue = durationToDenom(measures[0]?.timeSignature.noteValue ?? 'q')
+  const beatValue = durationToDenom(measure.timeSignature.noteValue ?? 'q')
 
   const vexVoice = new VexVoice({
-    numBeats: totalBeats,
+    numBeats: measure.totalBeats,
     beatValue: parseInt(beatValue),
   }).setMode(VoiceMode.SOFT)
 
   vexVoice.addTickables(staveNotes)
-
-  // Format and draw
-  new Formatter().joinVoices([vexVoice]).format([vexVoice], staveWidth - 60)
+  // Format against stave width minus padding — exactly like the working experiment
+  new Formatter().joinVoices([vexVoice]).format([vexVoice], stave.getWidth() - 40)
   vexVoice.draw(context, stave)
 
-  // Auto-beam
-  drawBeams(context, staveNotes, allRenderNotes, measures)
-}
-
-function createVexStaveNotes(
-  renderNotes: RenderNote[],
-  theme: ThemeColors,
-  opts: Required<RenderOptions>
-): StaveNote[] {
-  const result: StaveNote[] = []
-  let pendingGraceNotes: GraceNote[] = []
-
-  for (const rn of renderNotes) {
-    // Grace notes are collected and attached to the next regular note
-    if (rn.graceNote) {
-      pendingGraceNotes.push(new GraceNote({ keys: rn.keys, duration: '8', slash: true }))
-      continue
-    }
-
-    const staveNote = new StaveNote({
-      keys: rn.keys,
-      duration: rn.duration,
-    })
-
-    // Attach any pending grace notes
-    if (pendingGraceNotes.length > 0) {
-      staveNote.addModifier(new GraceNoteGroup(pendingGraceNotes), 0)
-      pendingGraceNotes = []
-    }
-
-    // Add accidentals per key
-    rn.accidentals.forEach((acc, idx) => {
-      if (acc) {
-        staveNote.addModifier(new VexAccidental(acc), idx)
-      }
-    })
-
-    // Add dots
-    if (rn.dotted) {
-      Dot.buildAndAttach([staveNote])
-    }
-
-    // Add dynamic text below note
-    if (rn.dynamic && opts.showDynamics) {
-      const dynText = new Annotation(DYNAMIC_MAP[rn.dynamic] ?? rn.dynamic)
-      staveNote.addModifier(dynText, 0)
-    }
-
-    // Add fermata articulation above note
-    if (rn.fermata) {
-      staveNote.addModifier(new Articulation('a@a').setPosition(3), 0)
-    }
-
-    // Add articulation modifier
-    if (rn.articulation) {
-      const vexCode = ARTICULATION_MAP[rn.articulation]
-      if (vexCode) {
-        staveNote.addModifier(new Articulation(vexCode), 0)
-      }
-    }
-
-    // Add ornament modifier
-    if (rn.ornament) {
-      const ornCode = ORNAMENT_MAP[rn.ornament]
-      if (ornCode) {
-        staveNote.addModifier(new VexOrnament(ornCode).setPosition(3), 0)
-      }
-    }
-
-    // Add chord symbol annotation above note
-    if (rn.chordSymbol) {
-      const chordAnnotation = new Annotation(rn.chordSymbol)
-        .setFont('Arial', 12, 'bold')
-        .setVerticalJustification(Annotation.VerticalJustify.TOP)
-      staveNote.addModifier(chordAnnotation, 0)
-    }
-
-    // Add lyric text below note
-    if (rn.lyric) {
-      const lyricAnnotation = new Annotation(rn.lyric).setVerticalJustification(
-        Annotation.VerticalJustify.BOTTOM
-      )
-      staveNote.addModifier(lyricAnnotation, 0)
-    }
-
-    // Add breath mark (comma articulation) above note
-    if (rn.breath) {
-      staveNote.addModifier(new Articulation('a,').setPosition(3), 0)
-    }
-
-    // Add expression text (italic) above note
-    if (rn.expression) {
-      const exprAnnotation = new Annotation(rn.expression)
-        .setFont('Times', 11, 'italic')
-        .setVerticalJustification(Annotation.VerticalJustify.TOP)
-      staveNote.addModifier(exprAnnotation, 0)
-    }
-
-    result.push(staveNote)
-  }
-
-  // If grace notes remain with no following regular note, attach to the last regular note
-  if (pendingGraceNotes.length > 0 && result.length > 0) {
-    result[result.length - 1].addModifier(new GraceNoteGroup(pendingGraceNotes), 0)
-  }
-
-  return result
+  drawBeams(context, staveNotes, renderNotes, renderToStave, [measure])
 }
 
 function drawBeams(
   context: RenderContext,
   staveNotes: StaveNote[],
   renderNotes: RenderNote[],
+  renderToStave: number[],
   measures: readonly Measure[]
 ): void {
   const beatsPerMeasure = measures[0]?.timeSignature.beats ?? 4
-  // Group beamable notes respecting beat boundaries
   const beatBoundary = beatsPerMeasure > 3 ? 2 : beatsPerMeasure
 
+  // Pre-compute absolute beat positions of each measure boundary so beams
+  // never cross a barline.
+  const measureBreaks = new Set<number>()
+  let acc = 0
+  for (const m of measures) {
+    acc += m.totalBeats
+    measureBreaks.add(acc)
+  }
+
+  // Groups contain stave-note indices (not render-note indices)
   const groups: number[][] = []
   let currentGroup: number[] = []
   let currentBeat = 0
 
+  const flushGroup = () => {
+    if (currentGroup.length >= 2) groups.push(currentGroup)
+    currentGroup = []
+  }
+
   for (let i = 0; i < renderNotes.length; i++) {
     const rn = renderNotes[i]
-    const baseDur = rn.duration.replace(/[dr]/g, '')
-    const isBeamable = !rn.isRest && ['8', '16', '32'].includes(baseDur)
-    const noteBeats = rn.sourceNotes[0]?.beats ?? 0.5
+    const si = renderToStave[i]
+    if (si < 0) continue // grace note — skip
 
-    // Check if this note crosses a beat boundary
+    const baseDur = rn.duration.replace(/[dr]/g, '')
+    const isBeamable = !rn.isRest && BEAMABLE_DURATIONS.has(baseDur)
+    const noteBeats = rn.sourceNotes[0]?.beats ?? 0.5
     const nextBeat = currentBeat + noteBeats
-    const crossesBoundary =
+
+    // Hard break at measure boundaries — never beam across a barline
+    if (measureBreaks.has(currentBeat) && currentBeat > 0) {
+      flushGroup()
+    }
+
+    const crossesBeatBoundary =
       Math.floor(currentBeat / beatBoundary) !== Math.floor((nextBeat - 0.001) / beatBoundary)
 
     if (isBeamable) {
-      if (crossesBoundary && currentGroup.length >= 2) {
-        // Close group at boundary, then start new one with this note
-        groups.push(currentGroup)
-        currentGroup = [i]
-      } else if (crossesBoundary && currentGroup.length < 2) {
-        // Not enough notes for a beam, start fresh
-        currentGroup = [i]
+      if (crossesBeatBoundary && currentGroup.length >= 2) {
+        flushGroup()
+        currentGroup = [si]
+      } else if (crossesBeatBoundary) {
+        currentGroup = [si]
       } else {
-        currentGroup.push(i)
+        currentGroup.push(si)
       }
     } else {
-      // Non-beamable breaks the group
-      if (currentGroup.length >= 2) groups.push(currentGroup)
-      currentGroup = []
+      flushGroup()
     }
 
     currentBeat = nextBeat
   }
-  if (currentGroup.length >= 2) groups.push(currentGroup)
+  flushGroup()
 
-  // Create beams
   for (const group of groups) {
-    const beamNotes = group.map((i) => staveNotes[i])
+    const beamNotes = group.map((si) => staveNotes[si]).filter(Boolean)
+    if (beamNotes.length < 2) continue
     try {
-      const beam = new Beam(beamNotes)
-      beam.setContext(context).draw()
+      new Beam(beamNotes).setContext(context).draw()
     } catch {
-      // VexFlow may reject some beam configurations — skip silently
+      // skip invalid beam — fresh context per system means no cross-stave corruption
     }
   }
 }
 
-// Re-export for use in tests
-export { groupNotesForRender, noteToVexKey, noteToVexDuration, DURATION_MAP, collectHairpinRuns }
-export type { RenderNote, HairpinRun }
+// ─── Spanners ────────────────────────────────────────────────────
+
+function drawSpanners(context: RenderContext, queues: SpannerQueues): void {
+  for (const t of queues.ties) {
+    new StaveTie({
+      firstNote: t.firstNote,
+      lastNote: t.lastNote,
+      firstIndexes: [t.firstIndex],
+      lastIndexes: [t.lastIndex],
+    })
+      .setContext(context)
+      .draw()
+  }
+
+  for (const s of queues.slurs) {
+    if (s.startNote && s.endNote) {
+      new Curve(s.startNote, s.endNote ?? undefined, {}).setContext(context).draw()
+    }
+  }
+
+  for (const g of queues.glissandos) {
+    if (g.startNote && g.endNote) {
+      new Curve(g.startNote, g.endNote, {
+        cps: [
+          { x: 0, y: 5 },
+          { x: 0, y: 5 },
+        ],
+      })
+        .setContext(context)
+        .draw()
+    }
+  }
+
+  for (const hp of queues.hairpins) {
+    try {
+      new StaveHairpin(
+        { first_note: hp.firstNote, last_note: hp.lastNote },
+        hp.type === 'cresc' ? StaveHairpin.type.CRESC : StaveHairpin.type.DECRESC
+      )
+        .setContext(context)
+        .draw()
+    } catch {
+      try {
+        hp.firstNote.addModifier(new Annotation(hp.type === 'cresc' ? 'cresc.' : 'decresc.'), 0)
+      } catch {
+        // ignore
+      }
+    }
+  }
+}
+
+// ─── Title ───────────────────────────────────────────────────────
+
+function renderTitleInto(
+  context: RenderContext,
+  score: Score,
+  opts: Required<RenderOptions>,
+  _theme: ThemeColors
+): void {
+  if (score.title) {
+    context.setFont('serif', 24, 'bold')
+    const titleWidth = context.measureText(score.title).width
+    context.fillText(score.title, (opts.width - titleWidth) / 2, opts.padding + 24)
+  }
+  if (score.composer) {
+    context.setFont('serif', 14, 'italic')
+    const composerWidth = context.measureText(score.composer).width
+    context.fillText(score.composer, opts.width - opts.padding - composerWidth, opts.padding + 45)
+  }
+}
+
+// ─── SVG export helpers ──────────────────────────────────────────
+
+function wrapSVGParts(
+  parts: Array<{ svg: string; height: number }>,
+  width: number,
+  totalHeight: number
+): string {
+  let yOffset = 0
+  const inner = parts
+    .map(({ svg, height }) => {
+      // Strip outer <svg> wrapper — handle multi-line/multi-attribute opening tags
+      const content = svg.replace(/<svg[\s\S]*?>/, '').replace(/<\/svg>\s*$/, '')
+      const group = `<g transform="translate(0,${yOffset})">${content}</g>`
+      yOffset += height
+      return group
+    })
+    .join('\n')
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${totalHeight}">\n${inner}\n</svg>`
+}
+
+// ─── Re-exports for backward compatibility ───────────────────────
+
+export { groupNotesForRender, noteToVexKey, noteToVexDuration } from './render-note.js'
+export { collectHairpinRuns } from './spanners.js'
+export { DURATION_MAP } from './vex-maps.js'
+export { releaseJsdom } from './jsdom-utils.js'
+export type { RenderNote } from './render-note.js'
+export type { HairpinRun } from './spanners.js'

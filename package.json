@@ -1,6 +1,6 @@
 {
   "name": "@bassmoses/maestro-js",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "type": "module",
   "description": "Human-friendly music library — write, render, and play music with simple syntax",
   "license": "MIT",
@@ -58,7 +58,9 @@
   "jsdelivr": "./dist/maestro.umd.min.js",
   "files": [
     "dist",
-    "!dist/**/__tests__"
+    "!dist/**/__tests__",
+    "!dist/**/*.map",
+    "!dist/maestro.umd.js"
   ],
   "devDependencies": {
     "@eslint/js": "^10.0.1",

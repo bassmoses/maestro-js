@@ -13,19 +13,49 @@ import type { RenderOptions } from './types.js'
 import type { RenderNote } from './render-note.js'
 import { DYNAMIC_MAP, ARTICULATION_MAP, ORNAMENT_MAP } from './vex-maps.js'
 
+// Standard dynamics rendered in bold italic serif (music engraving style)
+const GLYPH_DYNAMICS = new Set(['ppp', 'pp', 'p', 'mp', 'mf', 'f', 'ff', 'fff'])
+
+/**
+ * Apply manual accidentals to a stave note (used as fallback when
+ * VexAccidental.applyAccidentals is unavailable or fails).
+ */
+export function applyManualAccidentals(staveNote: StaveNote, rn: RenderNote): void {
+  rn.accidentals.forEach((acc, idx) => {
+    if (acc) staveNote.addModifier(new VexAccidental(acc), idx)
+  })
+}
+
 export function applyModifiers(
   staveNote: StaveNote,
   rn: RenderNote,
   opts: Required<RenderOptions>
 ): void {
-  rn.accidentals.forEach((acc, idx) => {
-    if (acc) staveNote.addModifier(new VexAccidental(acc), idx)
-  })
+  // Accidentals are NOT applied here — they are handled by
+  // VexAccidental.applyAccidentals() in renderMeasureOnStave for
+  // correct key-signature-aware display (no duplicates).
 
   if (rn.dotted) Dot.buildAndAttach([staveNote])
 
   if (rn.dynamic && opts.showDynamics) {
-    staveNote.addModifier(new Annotation(DYNAMIC_MAP[rn.dynamic] ?? rn.dynamic), 0)
+    const dynText = DYNAMIC_MAP[rn.dynamic] ?? rn.dynamic
+    if (GLYPH_DYNAMICS.has(dynText)) {
+      // Standard dynamics rendered in bold italic serif (music engraving style)
+      staveNote.addModifier(
+        new Annotation(dynText)
+          .setFont('Times New Roman', 14, 'bold italic')
+          .setVerticalJustification(Annotation.VerticalJustify.BOTTOM),
+        0
+      )
+    } else {
+      // Fallback to plain text for cresc/decresc and unknown dynamics
+      staveNote.addModifier(
+        new Annotation(dynText)
+          .setFont('Times New Roman', 11, 'italic')
+          .setVerticalJustification(Annotation.VerticalJustify.BOTTOM),
+        0
+      )
+    }
   }
 
   if (rn.fermata) {
@@ -80,6 +110,7 @@ export function createVexStaveNotes(
   const result: StaveNote[] = []
   let pendingGraceNotes: GraceNote[] = []
   const vexClef = clef === 'treble-8' ? 'treble' : clef
+  // VexFlow note clef is always the base clef name (no annotation needed for notes)
 
   for (const rn of renderNotes) {
     if (rn.graceNote) {

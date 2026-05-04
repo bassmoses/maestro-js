@@ -14,6 +14,9 @@ import {
   Annotation,
   Barline,
   StaveConnector,
+  Repetition,
+  VoltaType,
+  Accidental as VexAccidental,
 } from 'vexflow'
 
 import type { Score } from '../../model/Score.js'
@@ -25,7 +28,7 @@ import { buildScoreLayout, type VoiceLayout } from './StaveBuilder.js'
 import { BEAMABLE_DURATIONS } from './vex-maps.js'
 import { groupNotesForRender, type RenderNote } from './render-note.js'
 import { collectSpanners, buildRenderToStaveMap, type SpannerQueues } from './spanners.js'
-import { createVexStaveNotes } from './modifiers.js'
+import { createVexStaveNotes, applyManualAccidentals } from './modifiers.js'
 import { installJsdomGlobals, createDetachedContainer, extractSVG } from './jsdom-utils.js'
 
 // Number of accidentals per key — used to compute extra stave width for key signature
@@ -179,6 +182,22 @@ function renderSystemLine(
   const firstVoiceStaves: Stave[] = []
   const lastVoiceStaves: Stave[] = []
 
+  // Precompute score-level lookups (avoid repeated work inside the measure loop)
+  const voltaMap = new Map<number, number>()
+  for (const v of score.getVoltaEndings()) voltaMap.set(v.measure, v.ending)
+
+  const repeatSections = score.getRepeatSections()
+  const segnoMeasure = score.getSegnoMeasure()
+  const codaMeasure = score.getCodaMeasure()
+  const fineMeasure = score.getFineMeasure()
+  const hasDaCapo = score.getDaCapo()
+  const hasDalSegno = score.getDalSegno()
+  const totalMeasureCount = score.getParts()[0]?.getVoices()[0]?.getMeasures().length ?? 0
+  const hasRepeats = repeatSections.length > 0
+  const hasKey = score.key && score.key !== 'C' && score.key !== 'Am'
+  const vexClefName = (clef: string) => (clef === 'treble-8' ? 'treble' : clef)
+  const vexClefAnnotation = (clef: string) => (clef === 'treble-8' ? '8vb' : undefined)
+
   for (let vi = 0; vi < voiceLayouts.length; vi++) {
     const { layout, clef, voiceName } = voiceLayouts[vi]
     if (li >= layout.lines.length) continue
@@ -190,9 +209,9 @@ function renderSystemLine(
     const isFirstVoice = vi === 0
     const isLastVoice = vi === voiceLayouts.length - 1
 
-    // Extra width for clef + time sig + key sig on first measure of first line
+    // Extra width for clef + key sig on first measure of each line, plus time sig on first line
     const keyAccidentals = KEY_ACCIDENTAL_COUNT[score.key] ?? 0
-    const firstMeasureExtra = isFirstLine ? 60 + keyAccidentals * 12 : 0
+    const firstMeasureExtra = 60 + keyAccidentals * 12 + (isFirstLine ? 20 : 0)
     const totalStaveWidth = opts.width - opts.padding * 2
     const measureWidth = (totalStaveWidth - firstMeasureExtra) / line.measures.length
 
@@ -207,16 +226,18 @@ function renderSystemLine(
 
       const stave = new Stave(xPos, line.y, w)
 
-      if (isFirstMeasure && isFirstLine) {
-        stave.addClef(clef === 'treble-8' ? 'treble' : clef)
-        if (score.key && score.key !== 'C' && score.key !== 'Am') {
-          stave.addKeySignature(score.key)
-        }
-        stave.addTimeSignature(
-          `${score.timeSignature.beats}/${durationToDenom(score.timeSignature.noteValue)}`
-        )
-        if (isFirstVoice) {
-          stave.setTempo({ duration: 'q', dots: 0, bpm: score.tempo }, 0)
+      // Clef + key signature on the first measure of every system line
+      if (isFirstMeasure) {
+        stave.addClef(vexClefName(clef), 'default', vexClefAnnotation(clef))
+        if (hasKey) stave.addKeySignature(score.key)
+        // Time signature and tempo only on the very first line
+        if (isFirstLine) {
+          stave.addTimeSignature(
+            `${score.timeSignature.beats}/${durationToDenom(score.timeSignature.noteValue)}`
+          )
+          if (isFirstVoice) {
+            stave.setTempo({ duration: 'q', dots: 0, bpm: score.tempo }, 0)
+          }
         }
       }
 
@@ -224,17 +245,39 @@ function renderSystemLine(
         stave.setText(`${measureNumber}`)
       }
 
-      for (const rep of score.getRepeatSections()) {
+      // Rehearsal marks
+      if (measure.rehearsalMark) {
+        stave.setSection(measure.rehearsalMark, 0)
+      }
+
+      // Volta brackets (1st/2nd endings)
+      const voltaEnding = voltaMap.get(measureNumber)
+      if (voltaEnding !== undefined) {
+        stave.setVoltaType(VoltaType.BEGIN, `${voltaEnding}.`, 0)
+      }
+
+      // Repetition symbols (D.C., D.S., Segno, Coda, Fine)
+      if (segnoMeasure === measureNumber) {
+        stave.addModifier(new Repetition(Repetition.type.SEGNO_LEFT, 0, 0))
+      }
+      if (codaMeasure === measureNumber) {
+        stave.addModifier(new Repetition(Repetition.type.CODA_LEFT, 0, 0))
+      }
+      if (fineMeasure === measureNumber) {
+        stave.addModifier(new Repetition(Repetition.type.FINE, 0, 0))
+      }
+      if (measureNumber === totalMeasureCount) {
+        if (hasDaCapo) stave.addModifier(new Repetition(Repetition.type.DC, 0, 0))
+        if (hasDalSegno) stave.addModifier(new Repetition(Repetition.type.DS, 0, 0))
+      }
+
+      for (const rep of repeatSections) {
         if (rep.startMeasure === measureNumber) stave.setBegBarType(Barline.type.REPEAT_BEGIN)
         if (rep.endMeasure === measureNumber) stave.setEndBarType(Barline.type.REPEAT_END)
       }
 
-      if (isLastMeasure && score.getRepeatSections().length === 0) {
-        // final barline only on the very last measure of the whole score
-        const allMeasures = score.getParts()[0]?.getVoices()[0]?.getMeasures() ?? []
-        if (measureNumber === allMeasures.length) {
-          stave.setEndBarType(Barline.type.END)
-        }
+      if (isLastMeasure && !hasRepeats && measureNumber === totalMeasureCount) {
+        stave.setEndBarType(Barline.type.END)
       }
 
       stave.setContext(context).draw()
@@ -242,7 +285,7 @@ function renderSystemLine(
       if (isFirstVoice) firstVoiceStaves.push(stave)
       if (isLastVoice) lastVoiceStaves.push(stave)
 
-      renderMeasureOnStave(context, measure, stave, measureNumber, clef, opts, queues)
+      renderMeasureOnStave(context, measure, stave, measureNumber, clef, opts, queues, score.key)
 
       xPos += w
     }
@@ -292,7 +335,8 @@ function renderMeasureOnStave(
   _measureNumber: number,
   clef: string,
   opts: Required<RenderOptions>,
-  queues: SpannerQueues
+  queues: SpannerQueues,
+  keySignature: string
 ): void {
   const renderNotes = groupNotesForRender(measure.getNotes())
 
@@ -315,6 +359,19 @@ function renderMeasureOnStave(
   }).setMode(VoiceMode.SOFT)
 
   vexVoice.addTickables(staveNotes)
+
+  // Auto-apply accidentals based on key signature (handles courtesy accidentals,
+  // naturals, and omits accidentals already in the key)
+  try {
+    VexAccidental.applyAccidentals([vexVoice], keySignature)
+  } catch {
+    // Fallback: manually attach accidentals from the parsed note data
+    for (let i = 0; i < renderNotes.length; i++) {
+      const si = renderToStave[i]
+      if (si >= 0) applyManualAccidentals(staveNotes[si], renderNotes[i])
+    }
+  }
+
   // Format against stave width minus padding — exactly like the working experiment
   new Formatter().joinVoices([vexVoice]).format([vexVoice], stave.getWidth() - 40)
   vexVoice.draw(context, stave)
@@ -409,24 +466,43 @@ function drawTuplets(
   renderNotes: RenderNote[],
   renderToStave: number[]
 ): void {
-  // Collect consecutive triplet notes into groups, then wrap each group in a Tuplet
+  // Collect consecutive triplet/tuplet notes into groups, then wrap each group in a Tuplet
   let group: StaveNote[] = []
+  let currentRatio: { num: number; den: number } | undefined
+
   const flush = () => {
     if (group.length >= 2) {
       try {
-        new Tuplet(group).setContext(context).draw()
+        const tupletOpts: { numNotes?: number; notesOccupied?: number } = {}
+        if (currentRatio) {
+          tupletOpts.numNotes = currentRatio.num
+          tupletOpts.notesOccupied = currentRatio.den
+        }
+        new Tuplet(group, tupletOpts).setContext(context).draw()
       } catch {
         // ignore — invalid tuplet (e.g. incomplete group)
       }
     }
     group = []
+    currentRatio = undefined
   }
 
   for (let i = 0; i < renderNotes.length; i++) {
     const rn = renderNotes[i]
     const si = renderToStave[i]
     if (si < 0) continue
-    if (rn.sourceNotes[0]?.triplet) {
+    const note = rn.sourceNotes[0]
+    if (note?.triplet || note?.tupletRatio) {
+      const ratio = rn.tupletRatio ?? note?.tupletRatio
+      // Start new group if ratio changes
+      if (
+        currentRatio &&
+        ratio &&
+        (currentRatio.num !== ratio.num || currentRatio.den !== ratio.den)
+      ) {
+        flush()
+      }
+      if (!currentRatio && ratio) currentRatio = ratio
       group.push(staveNotes[si])
     } else {
       flush()
@@ -459,8 +535,8 @@ function drawSpanners(context: RenderContext, queues: SpannerQueues): void {
     if (g.startNote && g.endNote) {
       new Curve(g.startNote, g.endNote, {
         cps: [
-          { x: 0, y: 5 },
-          { x: 0, y: 5 },
+          { x: 0, y: 15 },
+          { x: 0, y: 15 },
         ],
       })
         .setContext(context)

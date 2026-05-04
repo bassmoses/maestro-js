@@ -25,6 +25,7 @@ export interface RenderNote {
   chordSymbol?: string
   glissando: boolean
   expression?: string
+  tupletRatio?: { num: number; den: number }
   sourceNotes: Note[]
 }
 
@@ -61,6 +62,7 @@ export function noteToRenderNote(note: Note, isRest = note.isRest): RenderNote {
     chordSymbol: note.chordSymbol,
     glissando: note.glissando,
     expression: note.expression,
+    tupletRatio: note.tupletRatio,
     sourceNotes: [note],
   }
 }

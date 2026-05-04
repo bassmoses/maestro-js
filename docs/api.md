@@ -9,7 +9,7 @@ Complete reference for the `maestro-js` public API.
 The primary class for creating, rendering, and playing music.
 
 ```ts
-import { Song } from 'maestro-js'
+import { Song } from '@bassmoses/maestro-js'
 ```
 
 ### `new Song(options?)`
@@ -78,6 +78,8 @@ interface RenderOptions {
   showDynamics?: boolean // Show dynamic markings
   grandStaff?: boolean // Connect staves with brace
   showBarNumbers?: boolean // Show measure numbers
+  showPartNames?: boolean // Show voice labels on staves (default: true)
+  partNameStyle?: 'full' | 'abbreviated' // Part name display style (default: 'abbreviated')
 }
 ```
 
@@ -240,6 +242,76 @@ song.tempoAt(9, 120) // Return to original tempo
 
 ---
 
+### `song.loop(startMeasure, endMeasure)`
+
+Set a loop range for playback. The specified measures will repeat indefinitely until `stop()` or `clearLoop()` is called. Returns `this`.
+
+```js
+song.loop(2, 4) // Loop measures 2–4
+song.play()
+```
+
+---
+
+### `song.clearLoop()`
+
+Remove any active loop. Returns `this`.
+
+```js
+song.clearLoop()
+```
+
+---
+
+### `song.effects(fx)`
+
+Apply audio effects (reverb, delay, chorus). Can be called before or after `play()`. Returns `Promise<this>`.
+
+```ts
+interface AudioEffects {
+  reverb?: number // 0–1
+  delay?: number // 0–1
+  chorus?: number // 0–1
+}
+```
+
+```js
+await song.effects({ reverb: 0.3, delay: 0.2 })
+```
+
+---
+
+### `song.exportScoreJSON()`
+
+Export the score as a `ScoreJSON` object — a detailed, portable format for storage and exchange. Returns `Promise<ScoreJSON>`.
+
+```js
+const scoreJSON = await song.exportScoreJSON()
+```
+
+---
+
+### `Song.fromScoreJSON(json)`
+
+Static method. Reconstruct a Song from a `ScoreJSON` object. Returns `Promise<Song>`.
+
+```js
+const song = await Song.fromScoreJSON(scoreJSON)
+```
+
+---
+
+### `Song.fromMusicXML(xmlString)`
+
+Static method. Import a MusicXML string and return a new Song. Returns `Promise<Song>`.
+
+```js
+const xml = fs.readFileSync('score.musicxml', 'utf-8')
+const song = await Song.fromMusicXML(xml)
+```
+
+---
+
 ### `song.getScore()`
 
 Get the internal `Score` model. For advanced use — render adapters and scheduler consume this.
@@ -249,6 +321,24 @@ Get the internal `Score` model. For advanced use — render adapters and schedul
 ### `song.getTimeline()`
 
 Build and return the playback `Timeline` (array of timed events).
+
+---
+
+## Instruments
+
+The `instrument` option in `SongOptions` accepts the following values:
+
+| Name        | Description       |
+| ----------- | ----------------- |
+| `'piano'`   | Piano (default)   |
+| `'strings'` | String ensemble   |
+| `'choir'`   | Choir / vocal pad |
+| `'organ'`   | Organ             |
+| `'synth'`   | Synthesizer       |
+
+```js
+const song = new Song({ instrument: 'strings' })
+```
 
 ---
 
@@ -283,7 +373,7 @@ Returns the array of notation strings added to this voice.
 For server-side usage (SVG/PNG/MIDI generation without browser APIs):
 
 ```js
-import { Song } from 'maestro-js/node'
+import { Song } from '@bassmoses/maestro-js/node'
 ```
 
 Same API as the browser entry, except `play()`, `pause()`, `stop()`, and `render()` to DOM are unavailable. Use `exportSVG()`, `exportMIDI()`, `exportPNG()`, and `exportJSON()` instead.
@@ -295,5 +385,5 @@ Same API as the browser entry, except `play()`, `pause()`, `stop()`, and `render
 All public TypeScript types are exported:
 
 ```ts
-import type { SongOptions, RenderOptions, PlayOptions, SeekPosition } from 'maestro-js'
+import type { SongOptions, RenderOptions, PlayOptions, SeekPosition } from '@bassmoses/maestro-js'
 ```

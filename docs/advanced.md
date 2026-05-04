@@ -9,7 +9,7 @@ Multi-voice writing, dynamics, playback events, server-side rendering, and expor
 Use named voices for arrangements with multiple parts:
 
 ```js
-import { Song } from 'maestro-js'
+import { Song } from '@bassmoses/maestro-js'
 
 const song = new Song({ tempo: 80, key: 'F', title: 'Duet' })
 
@@ -251,13 +251,13 @@ The JSON format preserves the original notation strings, allowing perfect round-
 Import from the `/node` subpath for server-side usage:
 
 ```js
-import { Song } from 'maestro-js/node'
+import { Song } from '@bassmoses/maestro-js/node'
 ```
 
 This entry point uses `jsdom` for SVG rendering without a browser. All export methods work:
 
 ```js
-import { Song } from 'maestro-js/node'
+import { Song } from '@bassmoses/maestro-js/node'
 import fs from 'fs'
 
 const song = new Song({ tempo: 100, key: 'G' })
@@ -279,7 +279,7 @@ fs.writeFileSync('output.png', png)
 
 ```ts
 // app/api/sheet/route.ts
-import { Song } from 'maestro-js/node'
+import { Song } from '@bassmoses/maestro-js/node'
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)

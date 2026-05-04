@@ -111,6 +111,7 @@ E4:q(fff)   — fortississimo
 
 | Code  | Meaning                        |
 | ----- | ------------------------------ |
+| `ppp` | Pianississimo (extremely soft) |
 | `pp`  | Pianissimo (very soft)         |
 | `p`   | Piano (soft)                   |
 | `mp`  | Mezzo-piano (moderately soft)  |
@@ -197,6 +198,150 @@ C4:q D4:q E4:q F4:q | G4:h A4:h | D.C.
 
 ---
 
+## Articulations
+
+Articulations are specified in parentheses, like dynamics:
+
+```
+C4:q(staccato)    — short, detached
+D4:q(accent)      — emphasized attack
+E4:q(tenuto)      — sustained, full value
+F4:q(marcato)     — heavily accented
+```
+
+| Code       | Meaning             |
+| ---------- | ------------------- |
+| `staccato` | Short, detached     |
+| `accent`   | Emphasized attack   |
+| `tenuto`   | Held for full value |
+| `marcato`  | Heavily accented    |
+
+Articulations can be combined with other modifiers using multiple parentheses:
+
+```
+C4:q(staccato)(mf)    — staccato at mezzo-forte
+G4:h(accent)(fermata) — accented fermata
+```
+
+---
+
+## Ornaments
+
+Ornaments are also specified in parentheses:
+
+```
+C4:q(trill)       — trill
+D4:q(mordent)     — mordent
+E4:q(turn)        — turn
+```
+
+| Code      | Meaning |
+| --------- | ------- |
+| `trill`   | Trill   |
+| `mordent` | Mordent |
+| `turn`    | Turn    |
+
+---
+
+## Breath Mark
+
+Insert a brief pause before the next note:
+
+```
+C4:q(breath) D4:q   — breath between C and D
+```
+
+---
+
+## Grace Notes
+
+A grace note is written with `~` before the main note (not after — that's a tie):
+
+```
+~D4 C4:q     — grace note D before quarter C
+```
+
+---
+
+## Chord Symbols
+
+Annotate a passage with chord symbol names using `@"..."`:
+
+```
+@"Cmaj7" C4:q E4:q G4:q B4:q
+@"Am" A3:h C4:h
+```
+
+---
+
+## Glissando
+
+Slide from one note to the next using `~>`:
+
+```
+C4:q ~> E4:q     — glissando from C to E
+```
+
+---
+
+## Rehearsal Marks
+
+Mark sections with letters or numbers in square brackets (without a duration):
+
+```
+[A] C4:q D4:q E4:q F4:q
+[B] G4:q A4:q B4:q C5:q
+```
+
+---
+
+## Expression Text
+
+Freeform expression text is enclosed in curly braces (when it doesn't look like a triplet):
+
+```
+{a tempo} C4:q D4:q E4:q F4:q
+{soli} G4:h A4:h
+```
+
+---
+
+## Navigation Markers
+
+### Dal Segno (D.S.)
+
+Jump back to the Segno marker:
+
+```
+Segno C4:q D4:q | E4:q F4:q | D.S.
+```
+
+### Segno & Coda
+
+```
+Segno C4:q D4:q | E4:q F4:q | Coda G4:w
+```
+
+### Fine
+
+Marks the end point when using D.C. or D.S.:
+
+```
+C4:q D4:q | Fine | E4:q F4:q | D.C.
+```
+
+---
+
+## Volta Endings
+
+First and second endings (and beyond) are marked with `1.`, `2.`, etc. after a barline:
+
+```
+|: C4:q D4:q | 1. E4:h :| 2. F4:h
+```
+
+---
+
 ## Combining Features
 
 All features can be combined freely:
@@ -219,18 +364,33 @@ This example contains:
 ## Full Grammar
 
 ```
-note     = pitch duration? dynamic?
-pitch    = [A-G] accidental? octave
-accidental = '#' | 'b' | '##' | 'bb'
-octave   = [0-8]
-duration = ':' ('w' | 'h' | 'q' | 'e' | 's' | 't') '.'?
-dynamic  = '(' ('pp'|'p'|'mp'|'mf'|'f'|'ff'|'fff'|'p<'|'f>'|'fermata') ')'
-rest     = 'R' duration?
-chord    = '[' note+ ']' duration? dynamic?
-triplet  = '{' note note note '}' duration? dynamic?
-tie      = note '~' note
-slur     = '(' note+ ')'
-barline  = '|'
-repeat   = '|:' ... ':|'
-dacapo   = 'D.C.'
+note         = pitch duration? modifier* lyric?
+pitch        = [A-G] accidental? octave
+accidental   = '#' | 'b' | '##' | 'bb'
+octave       = [0-8]
+duration     = ':' ('w' | 'h' | 'q' | 'e' | 's' | 't') '.'?
+modifier     = '(' (dynamic | hairpin | 'fermata' | 'breath' | articulation | ornament) ')'
+dynamic      = 'ppp' | 'pp' | 'p' | 'mp' | 'mf' | 'f' | 'ff' | 'fff'
+hairpin      = ('p' | 'mp' | 'mf' | 'f') ('<' | '>')
+articulation = 'staccato' | 'accent' | 'tenuto' | 'marcato'
+ornament     = 'trill' | 'mordent' | 'turn'
+lyric        = '"' text '"'
+rest         = 'R' duration?
+chord        = '[' note+ ']' duration? modifier*
+triplet      = '{' note note note '}' duration? modifier*
+tie          = note '~' note
+slur         = '(' note+ ')'
+graceNote    = '~' pitch
+glissando    = '~>'
+barline      = '|'
+repeat       = '|:' ... ':|'
+volta        = [1-9] '.'
+dacapo       = 'D.C.'
+dalSegno     = 'D.S.'
+segno        = 'Segno'
+coda         = 'Coda'
+fine         = 'Fine'
+rehearsal    = '[' (letter | digits) ']'
+chordSymbol  = '@"' text '"'
+expression   = '{' text '}'
 ```

@@ -129,24 +129,31 @@ song.clearLoop() // remove the loop
 
 ## Note Syntax at a Glance
 
-| Feature        | Syntax                        | Example             |
-| :------------- | :---------------------------- | :------------------ |
-| Pitch + Octave | `A`–`G` + `0`–`8`             | `C4`, `F#5`, `Bb3`  |
-| Duration       | `:w` `:h` `:q` `:e` `:s` `:t` | `C4:q` (quarter)    |
-| Dotted         | `.` after duration            | `G4:h.`             |
-| Rest           | `R`                           | `R:q`               |
-| Chord          | `[...]`                       | `[C4 E4 G4]:h`      |
-| Triplet        | `{...}`                       | `{C4 D4 E4}:q`      |
-| Dynamic        | `(pp)` to `(fff)`             | `C4:q(mf)`          |
-| Tie            | `~`                           | `C4:h~C4:h`         |
-| Slur           | `(...)`                       | `(E4:q F4:q G4:h)`  |
-| Fermata        | `(fermata)`                   | `C4:w(fermata)`     |
-| Lyric          | `"text"` after note           | `C4:q"hello"`       |
-| Barline        | `\|`                          | `C4:q D4:q \| E4:h` |
-| Repeat         | `\|:` ... `:\|`               | `\|: C4:q D4:q :\|` |
-| Da Capo        | `D.C.`                        | `C4:w \| D.C.`      |
+| Feature        | Syntax                        | Example                           |
+| :------------- | :---------------------------- | :-------------------------------- |
+| Pitch + Octave | `A`–`G` + `0`–`8`             | `C4`, `F#5`, `Bb3`                |
+| Duration       | `:w` `:h` `:q` `:e` `:s` `:t` | `C4:q` (quarter)                  |
+| Dotted         | `.` after duration            | `G4:h.`                           |
+| Rest           | `R`                           | `R:q`                             |
+| Chord          | `[...]`                       | `[C4 E4 G4]:h`                    |
+| Triplet        | `{...}`                       | `{C4 D4 E4}:q`                    |
+| Dynamic        | `(ppp)` to `(fff)`            | `C4:q(mf)`                        |
+| Tie            | `~`                           | `C4:h~C4:h`                       |
+| Slur           | `(...)`                       | `(E4:q F4:q G4:h)`                |
+| Fermata        | `(fermata)`                   | `C4:w(fermata)`                   |
+| Articulation   | `(staccato)` etc.             | `C4:q(staccato)`                  |
+| Ornament       | `(trill)` etc.                | `D4:q(trill)`                     |
+| Grace Note     | `~` before note               | `~D4 C4:q`                        |
+| Lyric          | `"text"` after note           | `C4:q"hello"`                     |
+| Chord Symbol   | `@"text"`                     | `@"Cmaj7"`                        |
+| Glissando      | `~>`                          | `C4:q ~> E4:q`                    |
+| Barline        | `\|`                          | `C4:q D4:q \| E4:h`               |
+| Repeat         | `\|:` ... `:\|`               | `\|: C4:q D4:q :\|`               |
+| Volta          | `1.` `2.`                     | `\|: C4:q \| 1. E4:h :\| 2. F4:h` |
+| Da Capo        | `D.C.`                        | `C4:w \| D.C.`                    |
+| Dal Segno      | `D.S.` / `Segno`              | `Segno C4:q \| D.S.`              |
 
-Full syntax reference: [docs/syntax.md](docs/syntax.md)
+Full syntax reference: [docs/syntax.md](https://github.com/bassmoses/maestro-js/blob/master/docs/syntax.md)
 
 ---
 
@@ -206,6 +213,7 @@ const png = await song.exportPNG() // PNG buffer (requires sharp)
 const json = song.exportJSON() // portable JSON snapshot
 
 const restored = Song.fromJSON(json) // reconstruct from JSON
+const fromXML = await Song.fromMusicXML(xmlString) // import MusicXML
 ```
 
 ### Advanced
@@ -213,10 +221,11 @@ const restored = Song.fromJSON(json) // reconstruct from JSON
 ```js
 song.transpose(2)                           // shift all notes up 2 semitones
 song.tempoAt(5, 80)                         // tempo change at measure 5
+await song.effects({ reverb: 0.3 })         // audio effects
 song.on('beat', ({ measure }) => { ... })   // playback events
 ```
 
-Full API reference: [docs/api.md](docs/api.md)
+Full API reference: [docs/api.md](https://github.com/bassmoses/maestro-js/blob/master/docs/api.md)
 
 ---
 
@@ -241,7 +250,7 @@ fs.writeFileSync('sheet.png', png)
 ## Plain HTML (UMD)
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@bassmoses/maestro-js/dist/maestro.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@bassmoses/maestro-js/dist/maestro.umd.min.js"></script>
 <div id="sheet"></div>
 <script>
   const song = new Maestro.Song({ tempo: 100 })
@@ -265,16 +274,16 @@ song.render('#container', { theme: 'dark' })
 
 ## Documentation
 
-- [Note Syntax Reference](docs/syntax.md)
-- [API Reference](docs/api.md)
-- [Advanced Usage](docs/advanced.md) — multi-voice, events, exports, Node.js
+- **[Note Syntax Reference](https://github.com/bassmoses/maestro-js/blob/master/docs/syntax.md)** — every notation feature explained
+- **[API Reference](https://github.com/bassmoses/maestro-js/blob/master/docs/api.md)** — complete method-by-method reference
+- **[Advanced Usage](https://github.com/bassmoses/maestro-js/blob/master/docs/advanced.md)** — multi-voice, events, effects, exports, Node.js
 
 ## Examples
 
-- [`examples/simple-melody/`](examples/simple-melody/) — Minimal usage
-- [`examples/choir/`](examples/choir/) — SATB choral arrangement
-- [`examples/piano-piece/`](examples/piano-piece/) — Piano with dynamics & chords
-- [`examples/react-integration/`](examples/react-integration/) — React component
+- [Simple Melody](https://github.com/bassmoses/maestro-js/tree/master/examples/simple-melody) — Minimal usage
+- [Choir](https://github.com/bassmoses/maestro-js/tree/master/examples/choir) — SATB choral arrangement
+- [Piano Piece](https://github.com/bassmoses/maestro-js/tree/master/examples/piano-piece) — Piano with dynamics & chords
+- [React Integration](https://github.com/bassmoses/maestro-js/tree/master/examples/react-integration) — React component
 
 ---
 

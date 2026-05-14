@@ -3,15 +3,24 @@ import { parse } from '../parser/parser.js'
 import { Scheduler } from '../scheduler/Scheduler.js'
 import type { Timeline } from '../scheduler/timeline.js'
 import { Voice } from './Voice.js'
+import { TimingCallbacks } from '../scheduler/TimingCallbacks.js'
+import type { TimingCallbackOptions } from '../scheduler/timeline.js'
 import type { Clef } from '../model/VoiceModel.js'
 import { VexFlowAdapter } from '../adapters/renderer/VexFlowAdapter.js'
-import type { RenderOptions as RendererRenderOptions } from '../adapters/renderer/types.js'
+import type {
+  RenderOptions as RendererRenderOptions,
+  NotePositionMap,
+} from '../adapters/renderer/types.js'
+import { ChordGridRenderer } from '../adapters/renderer/ChordGridRenderer.js'
+import type { ChordGridOptions } from '../adapters/renderer/ChordGridRenderer.js'
 import type { ToneAdapter } from '../adapters/audio/ToneAdapter.js'
 import { midiToPitch, pitchToMidi } from '../model/Pitch.js'
 import { durationToDenom } from '../model/Duration.js'
 import { nodeToNote } from '../model/converter.js'
 import type { NoteNode } from '../parser/types.js'
 import type { PitchName, Accidental, Octave } from '../model/types.js'
+import { Cursor } from '../ui/Cursor.js'
+import type { CursorOptions } from '../ui/Cursor.js'
 
 export interface SongOptions {
   tempo?: number
@@ -22,6 +31,11 @@ export interface SongOptions {
   composer?: string
 }
 
+export interface InstrumentOptions {
+  soundfont?: 'MusyngKite' | 'FluidR3_GM'
+  soundfontUrl?: string
+}
+
 export interface RenderOptions {
   width?: number
   theme?: 'light' | 'dark'
@@ -30,6 +44,15 @@ export interface RenderOptions {
   showBarNumbers?: boolean
   showPartNames?: boolean
   partNameStyle?: 'full' | 'abbreviated'
+  zoom?: number
+  ariaLabel?: boolean
+}
+
+export interface NoteClickInfo {
+  measureIndex: number
+  voiceIndex: number
+  noteIndex: number
+  note: import('../model/Note.js').Note
 }
 
 export interface PlayOptions {
@@ -64,6 +87,19 @@ export class Song {
   private tempoChanges: Array<{ measure: number; bpm: number }> = []
   private loopSettings: { startMeasure: number; endMeasure: number } | null = null
   private pendingEffects: { reverb?: number; delay?: number; chorus?: number } | null = null
+  private pickupEnabled: boolean = false
+  private cursor: Cursor | null = null
+  private notePositionMap: NotePositionMap = new Map()
+  private renderedSvgContainer: SVGSVGElement | null = null
+  private clickHandlers: Array<(info: NoteClickInfo) => void> = []
+  private selectedNote: NoteClickInfo | null = null
+  private clickListenerCleanup: (() => void) | null = null
+  private soundfontOptions: InstrumentOptions | null = null
+  private useSoundfont = false
+  private zoomFactor: number = 1.0
+  private resizeObserver: ResizeObserver | null = null
+  private renderTarget: HTMLElement | null = null
+  private lastRenderOptions: RenderOptions | undefined = undefined
 
   constructor(options?: SongOptions) {
     this.options = {
@@ -134,6 +170,23 @@ export class Song {
     return this
   }
 
+  /**
+   * Create a TimingCallbacks instance backed by the current score's timeline.
+   * If the audio adapter is already loaded, also wires callbacks into ToneAdapter
+   * so Tone.Draw fires them at the correct audio-clock time during play().
+   */
+  createTimingCallbacks(options: TimingCallbackOptions): TimingCallbacks {
+    const mergedTimeline = Scheduler.mergeTies(Scheduler.buildTimeline(this.score))
+    const tc = new TimingCallbacks(mergedTimeline, options)
+
+    // If audio adapter is already loaded, also wire callbacks into ToneAdapter
+    if (this.audioAdapter) {
+      this.audioAdapter.setTimingCallbacks(options)
+    }
+
+    return tc
+  }
+
   // --- Stubs for future phases ---
 
   /** Convert Song-level RenderOptions to internal renderer options, stripping undefined keys. */
@@ -147,6 +200,8 @@ export class Song {
     if (options.showBarNumbers !== undefined) opts.showBarNumbers = options.showBarNumbers
     if (options.showPartNames !== undefined) opts.showPartNames = options.showPartNames
     if (options.partNameStyle !== undefined) opts.partNameStyle = options.partNameStyle
+    if (options.zoom !== undefined) opts.zoom = options.zoom
+    if (options.ariaLabel !== undefined) opts.ariaLabel = options.ariaLabel
     return opts
   }
 
@@ -163,7 +218,21 @@ export class Song {
       throw new Error(`Render target "${target}" not found.`)
     }
 
-    VexFlowAdapter.render(this.score, element as HTMLElement, this.toRendererOptions(options))
+    this.renderTarget = element as HTMLElement
+    this.lastRenderOptions = options
+
+    this.notePositionMap = VexFlowAdapter.render(
+      this.score,
+      element as HTMLElement,
+      this.toRendererOptions({ ...options, zoom: this.zoomFactor })
+    )
+
+    if (typeof document !== 'undefined') {
+      const svgs = (element as HTMLElement).querySelectorAll('svg')
+      this.renderedSvgContainer = svgs.length > 0 ? (svgs[svgs.length - 1] as SVGSVGElement) : null
+      this.setupClickDelegation(element as HTMLElement)
+    }
+
     return this
   }
 
@@ -194,6 +263,29 @@ export class Song {
     return this
   }
 
+  /**
+   * Set the instrument for playback. When soundfont options are provided,
+   * playback will use SoundfontAdapter; otherwise the default ToneAdapter is used.
+   */
+  useInstrument(name: string, options?: InstrumentOptions): this {
+    if (this.options) {
+      this.options.instrument = name
+    }
+    if (options !== undefined) {
+      this.soundfontOptions = options
+      this.useSoundfont = !!(options.soundfont || options.soundfontUrl)
+    } else {
+      this.soundfontOptions = null
+      this.useSoundfont = false
+    }
+    // Dispose current adapter so next play() creates a fresh one
+    if (this.audioAdapter) {
+      this.audioAdapter.dispose()
+      this.audioAdapter = null
+    }
+    return this
+  }
+
   /** Apply audio effects (reverb, delay, chorus). Call before or after play(). */
   async effects(fx: { reverb?: number; delay?: number; chorus?: number }): Promise<this> {
     this.pendingEffects = fx
@@ -216,6 +308,45 @@ export class Song {
   exportSVG(options?: RenderOptions): string {
     const result = VexFlowAdapter.renderToSVG(this.score, this.toRendererOptions(options))
     return result.svg
+  }
+
+  /**
+   * Render a chord grid (jazz lead-sheet style) into a target element.
+   * Each cell = one measure showing the chord symbol and rhythm slashes.
+   * Chord symbols are sourced from @"Chord" annotations in the notation.
+   *
+   * @param target CSS selector string or HTMLElement
+   * @param options Optional grid layout options
+   */
+  renderChordGrid(target: string | HTMLElement, options?: ChordGridOptions): this {
+    const element =
+      typeof target === 'string'
+        ? typeof document !== 'undefined'
+          ? document.querySelector(target)
+          : null
+        : target
+
+    if (!element) {
+      throw new Error(`renderChordGrid target "${String(target)}" not found.`)
+    }
+
+    const svgString = ChordGridRenderer.render(this.score, options)
+    const el = element as HTMLElement
+    // Clear existing content
+    while (el.firstChild) {
+      el.removeChild(el.firstChild)
+    }
+    // Parse the SVG string and append via DOM API (avoids raw innerHTML assignment)
+    if (typeof DOMParser !== 'undefined') {
+      const parser = new DOMParser()
+      const doc = parser.parseFromString(svgString, 'image/svg+xml')
+      const svgEl = doc.documentElement
+      el.appendChild(el.ownerDocument.adoptNode(svgEl))
+    } else {
+      // Node.js / non-browser environment fallback (tests with jsdom use DOMParser path)
+      el.setAttribute('data-chord-grid', svgString)
+    }
+    return this
   }
 
   /** Export as MIDI buffer. */
@@ -396,6 +527,88 @@ export class Song {
     return this
   }
 
+  /**
+   * Mark this song as having a pickup (anacrusis) measure.
+   * Affects notation rendering (measure numbering) and VexFlow output.
+   */
+  setPickup(enabled: boolean): this {
+    this.pickupEnabled = enabled
+    this.score.setPickup(enabled)
+    return this
+  }
+
+  /** Enable a playback cursor overlay on the rendered SVG. */
+  enableCursor(options?: CursorOptions): this {
+    if (typeof document === 'undefined') return this
+    this.cursor?.detach()
+    this.cursor = new Cursor(options)
+    if (this.renderedSvgContainer) {
+      this.cursor.attach(this.renderedSvgContainer)
+    }
+    return this
+  }
+
+  /** Detach and remove the playback cursor. */
+  disableCursor(): this {
+    this.cursor?.detach()
+    this.cursor = null
+    return this
+  }
+
+  /** Set the zoom scale factor for rendering. Re-renders immediately if already rendered. */
+  setZoom(factor: number): this {
+    this.zoomFactor = factor
+    if (this.renderTarget) {
+      this.rerender()
+    }
+    return this
+  }
+
+  /** Enable or disable responsive re-rendering via ResizeObserver. */
+  setResponsive(enabled: boolean): this {
+    if (typeof ResizeObserver === 'undefined') return this
+
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect()
+      this.resizeObserver = null
+    }
+
+    if (enabled && this.renderTarget) {
+      this.resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const newWidth = Math.round(entry.contentRect.width)
+          if (newWidth > 0) {
+            this.rerender()
+          }
+        }
+      })
+      this.resizeObserver.observe(this.renderTarget)
+    }
+
+    return this
+  }
+
+  /** Register a click handler. Called when the user clicks a note in the rendered SVG. */
+  onClick(handler: (info: NoteClickInfo) => void): this {
+    this.clickHandlers.push(handler)
+    return this
+  }
+
+  /** Returns the currently selected note info, or null if nothing is selected. */
+  getSelectedNote(): NoteClickInfo | null {
+    return this.selectedNote
+  }
+
+  /** Deselect the currently selected note. */
+  clearSelection(): this {
+    if (this.selectedNote) {
+      const pos = this.notePositionMap.get(this.selectedNote.noteIndex)
+      pos?.svgElement?.classList.remove('maestro-note-selected')
+      this.selectedNote = null
+    }
+    return this
+  }
+
   // --- Internal ---
 
   /** @internal Called by Voice when notation is added. */
@@ -424,6 +637,19 @@ export class Song {
       this.audioAdapter.dispose()
       this.audioAdapter = null
     }
+
+    if (this.useSoundfont) {
+      const { SoundfontAdapter } = await import('../adapters/audio/SoundfontAdapter.js')
+      const adapter = new SoundfontAdapter()
+      adapter.load(this.score, {
+        instrument: this.options.instrument,
+        soundfont: this.soundfontOptions?.soundfont,
+        soundfontUrl: this.soundfontOptions?.soundfontUrl,
+      })
+      this.audioAdapter = adapter as unknown as ToneAdapter // same runtime interface
+      return adapter as unknown as ToneAdapter
+    }
+
     const { ToneAdapter: Adapter } = await import('../adapters/audio/ToneAdapter.js')
     const adapter = new Adapter()
     adapter.load(this.score, {
@@ -451,6 +677,106 @@ export class Song {
     }
   }
 
+  private setupClickDelegation(container: HTMLElement): void {
+    this.clickListenerCleanup?.()
+    const listener = (e: Event) => {
+      let el: Element | null = e.target as Element | null
+      while (el && el !== container) {
+        const noteIndexAttr = el.getAttribute('data-note-index')
+        const measureIndexAttr = el.getAttribute('data-measure-index')
+        if (noteIndexAttr !== null && measureIndexAttr !== null) {
+          const noteIdx = parseInt(noteIndexAttr, 10)
+          const measureIdx = parseInt(measureIndexAttr, 10)
+          if (isNaN(noteIdx) || isNaN(measureIdx)) return
+          this.handleNoteClick(noteIdx, measureIdx, el)
+          return
+        }
+        el = el.parentElement
+      }
+    }
+    container.addEventListener('click', listener)
+    this.clickListenerCleanup = () => container.removeEventListener('click', listener)
+  }
+
+  private handleNoteClick(noteIndex: number, measureIndex: number, svgEl: Element): void {
+    // Deselect previous
+    if (this.selectedNote) {
+      const prevEl = this.notePositionMap.get(this.selectedNote.noteIndex)?.svgElement
+      prevEl?.classList.remove('maestro-note-selected')
+    }
+
+    // Resolve note from score model using measureIndex
+    // The score may have multiple parts/voices; find the note by scanning all voices
+    const parts = this.score.getParts()
+    let resolvedNote: import('../model/Note.js').Note | null = null
+    let resolvedVoiceIndex = 0
+
+    for (let pi = 0; pi < parts.length; pi++) {
+      const part = parts[pi]
+      const voices = part.getVoices()
+      for (let vi = 0; vi < voices.length; vi++) {
+        const voice = voices[vi]
+        const measures = voice.getMeasures()
+        if (measureIndex >= measures.length) continue
+        const measure = measures[measureIndex]
+        if (!measure) continue
+
+        // Compute flat note offset for this measure across this voice
+        let offset = 0
+        for (let mi = 0; mi < measureIndex; mi++) {
+          offset += measures[mi]?.getNotes().length ?? 0
+        }
+        const localNoteIndex = noteIndex - offset
+        const notes = measure.getNotes()
+        if (localNoteIndex >= 0 && localNoteIndex < notes.length) {
+          resolvedNote = notes[localNoteIndex] ?? null
+          resolvedVoiceIndex = pi
+          break
+        }
+      }
+      if (resolvedNote) break
+    }
+
+    if (!resolvedNote) return
+
+    const info: NoteClickInfo = {
+      measureIndex,
+      voiceIndex: resolvedVoiceIndex,
+      noteIndex,
+      note: resolvedNote,
+    }
+
+    this.selectedNote = info
+    svgEl.classList.add('maestro-note-selected')
+
+    for (const handler of this.clickHandlers) {
+      try {
+        handler(info)
+      } catch (err) {
+        console.error('[maestro] onClick handler threw:', err)
+      }
+    }
+  }
+
+  private rerender(): void {
+    if (!this.renderTarget) return
+    while (this.renderTarget.firstChild) {
+      this.renderTarget.removeChild(this.renderTarget.firstChild)
+    }
+    this.notePositionMap = VexFlowAdapter.render(
+      this.score,
+      this.renderTarget,
+      this.toRendererOptions({ ...(this.lastRenderOptions ?? {}), zoom: this.zoomFactor })
+    )
+    if (this.cursor && this.renderTarget) {
+      const svgs = this.renderTarget.querySelectorAll('svg')
+      this.renderedSvgContainer = svgs.length > 0 ? (svgs[svgs.length - 1] as SVGSVGElement) : null
+      if (this.renderedSvgContainer) {
+        this.cursor.attach(this.renderedSvgContainer)
+      }
+    }
+  }
+
   private rebuildScore(): void {
     this.score = new Score(this.toScoreOptions())
 
@@ -462,6 +788,11 @@ export class Song {
     // Re-apply stored loop
     if (this.loopSettings) {
       this.score.setLoop(this.loopSettings.startMeasure, this.loopSettings.endMeasure)
+    }
+
+    // Re-apply pickup flag
+    if (this.pickupEnabled) {
+      this.score.setPickup(true)
     }
 
     // Build default voice from add() calls
@@ -497,9 +828,14 @@ export class Song {
   ): void {
     let measureCount = 1
     let repeatStartMeasure = -1
+    let firstNote = this.score.hasPickup
 
     for (const node of nodes) {
       if (node.isBarline) {
+        // Seal a pending pickup measure when we see the first barline
+        if (measureCount === 1 && this.score.hasPickup) {
+          voice.closePickupMeasure()
+        }
         if (node.repeatStart) {
           repeatStartMeasure = measureCount + 1
         }
@@ -533,7 +869,8 @@ export class Song {
         continue
       }
       const note = nodeToNote(node)
-      voice.addNote(note, this.score.timeSignature)
+      voice.addNote(note, this.score.timeSignature, firstNote)
+      firstNote = false
     }
   }
 

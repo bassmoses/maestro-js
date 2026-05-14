@@ -214,13 +214,15 @@ export class ScoreJSONAdapter {
       for (const voiceJSON of partJSON.voices) {
         const voice = part.addVoice(voiceJSON.name, voiceJSON.clef)
 
+        let firstNote = score.hasPickup
         for (const measureJSON of voiceJSON.measures) {
           if (measureJSON.rehearsalMark) {
             voice.setPendingRehearsalMark(measureJSON.rehearsalMark)
           }
           for (const noteJSON of measureJSON.notes) {
             const note = jsonToNote(noteJSON)
-            voice.addNote(note, score.timeSignature)
+            voice.addNote(note, score.timeSignature, firstNote)
+            firstNote = false
           }
         }
       }

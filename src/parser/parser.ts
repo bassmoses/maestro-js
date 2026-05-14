@@ -12,6 +12,7 @@ import type {
 import { tokenize } from './tokenizer.js'
 import { MaestroError } from './errors.js'
 import { VALID_DYNAMIC_NAMES } from './constants.js'
+import type { PercussionInstrument } from '../model/percussion.js'
 
 // Maps a triplet container duration to each note's duration.
 // Standard: triplet quarter = 3 eighths; triplet half = 3 quarters; triplet eighth = 3 sixteenths.
@@ -45,6 +46,31 @@ function parseNoteRaw(
   position: number,
   defaults: { slurred?: boolean; chord?: boolean; triplet?: boolean; tripletGroup?: number } = {}
 ): NoteNode {
+  // Multi-measure rest: R:Nm where N is a positive integer
+  const multiRestMatch = raw.match(/^R:(\d+)m$/)
+  if (multiRestMatch) {
+    const count = parseInt(multiRestMatch[1], 10)
+    return {
+      type: 'rest' as const,
+      pitch: null,
+      accidental: null,
+      octave: null,
+      duration: 'w' as const,
+      dotted: false,
+      dynamic: null,
+      tied: false,
+      slurred: false,
+      isBarline: false,
+      chord: false,
+      triplet: false,
+      fermata: false,
+      breath: false,
+      articulation: null,
+      ornament: null,
+      multiMeasureRest: count,
+    }
+  }
+
   // Regex: pitch (or R), optional accidental, optional octave, optional :duration[.],
   // up to two optional inline modifiers (dynamic/fermata/articulation), optional "lyric"
   const match = raw.match(
@@ -275,6 +301,40 @@ function makeBarlineNode(opts?: {
   }
 }
 
+function parsePercussionToken(token: Token, input: string): NoteNode {
+  // raw looks like: X<SNARE>:q or X<KICK>:e.  or X<HIHAT> or X<SNARE>:q(f)
+  const match = token.raw.match(/^X<([^>]+)>(?::([whqest])(\.)?)?(?:\(([^)]+)\))?/)
+  if (!match) {
+    throw new MaestroError(
+      `Invalid percussion syntax: "${token.raw}"`,
+      input,
+      token.position,
+      token.raw.length
+    )
+  }
+  const [, drumName, durRaw, dotRaw, dynRaw] = match
+  const duration: DurationName = (durRaw ?? 'q') as DurationName
+  const dotted = dotRaw === '.'
+  const dynamic: Dynamic | null = dynRaw ? parseDynamicString(dynRaw) : null
+
+  return {
+    type: 'note',
+    pitch: null,
+    accidental: null,
+    octave: null,
+    duration,
+    dotted,
+    dynamic,
+    tied: false,
+    slurred: false,
+    isBarline: false,
+    chord: false,
+    triplet: false,
+    fermata: false,
+    percussion: drumName as PercussionInstrument,
+  }
+}
+
 export function parse(input: string): NoteNode[] {
   const tokens = tokenize(input)
   const nodes: NoteNode[] = []
@@ -332,6 +392,16 @@ export function parse(input: string): NoteNode[] {
       case 'SLUR': {
         const slurNodes = parseSlurToken(token, input)
         nodes.push(...slurNodes)
+        break
+      }
+
+      case 'PERCUSSION': {
+        const node = parsePercussionToken(token, input)
+        if (pendingChordSymbol) {
+          node.chordSymbol = pendingChordSymbol
+          pendingChordSymbol = undefined
+        }
+        nodes.push(node)
         break
       }
 

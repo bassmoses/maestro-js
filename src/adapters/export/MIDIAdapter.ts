@@ -121,14 +121,25 @@ export class MIDIAdapter {
               track.addEvent(event)
               waitDuration = undefined
             } else {
-              // Single note
-              const event = new NoteEvent({
-                pitch: [noteToPitchString(note)],
-                duration: noteToDuration(note),
-                velocity: DYNAMIC_VELOCITY[note.dynamic ?? ''] ?? DEFAULT_VELOCITY,
-                wait: waitDuration || undefined,
-              })
-              track.addEvent(event)
+              // Single note — route percussion to channel 10
+              if (note.isPercussion && note.percussionMidi !== null) {
+                const event = new NoteEvent({
+                  pitch: [String(note.percussionMidi)],
+                  channel: 10,
+                  duration: noteToDuration(note),
+                  velocity: DYNAMIC_VELOCITY[note.dynamic ?? ''] ?? DEFAULT_VELOCITY,
+                  wait: waitDuration || undefined,
+                })
+                track.addEvent(event)
+              } else {
+                const event = new NoteEvent({
+                  pitch: [noteToPitchString(note)],
+                  duration: noteToDuration(note),
+                  velocity: DYNAMIC_VELOCITY[note.dynamic ?? ''] ?? DEFAULT_VELOCITY,
+                  wait: waitDuration || undefined,
+                })
+                track.addEvent(event)
+              }
               waitDuration = undefined
               i++
             }

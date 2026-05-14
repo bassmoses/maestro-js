@@ -1,5 +1,6 @@
 import type { Token } from './types.js'
 import { MaestroError, suggestPitch } from './errors.js'
+import { PERCUSSION_INSTRUMENTS } from '../model/percussion.js'
 
 // Matches a single note token: pitch (or R for rest), optional accidental, optional octave, optional :duration[.],
 // up to two optional inline modifiers (dynamic/fermata/articulation), optional "lyric"
@@ -255,9 +256,52 @@ export function tokenize(input: string): Token[] {
       continue
     }
 
+    // Percussion note: X<DRUMNAME>:dur[.][(<dynamic>)]
+    if (input[i] === 'X' && input[i + 1] === '<') {
+      const start = i
+      const closeAngle = input.indexOf('>', i + 2)
+      if (closeAngle === -1) {
+        throw new MaestroError('Unclosed percussion instrument "<".', input, i, 2)
+      }
+      const drumName = input.slice(i + 2, closeAngle)
+      if (!(PERCUSSION_INSTRUMENTS as readonly string[]).includes(drumName)) {
+        throw new MaestroError(
+          `Unknown percussion instrument "${drumName}". Valid: ${PERCUSSION_INSTRUMENTS.join(', ')}`,
+          input,
+          i,
+          closeAngle - i + 1
+        )
+      }
+      let j = closeAngle + 1
+      // Optional :duration[.]
+      if (input[j] === ':' && j + 1 < input.length && /[whqest]/.test(input[j + 1])) {
+        j += 2
+        if (j < input.length && input[j] === '.') j++
+      }
+      // Optional dynamic: (mp), (f), etc.
+      if (j < input.length && input[j] === '(') {
+        const dynEnd = input.indexOf(')', j)
+        if (dynEnd !== -1) j = dynEnd + 1
+      }
+      const raw = input.slice(start, j)
+      tokens.push({ type: 'PERCUSSION', raw, position: start })
+      i = j
+      continue
+    }
+
     // Note or Rest: match note pattern
     if (/[A-GR]/.test(input[i])) {
       const remaining = input.slice(i)
+
+      // Multi-measure rest: R:Nm where N is a positive integer
+      const multiRestMatch = remaining.match(/^R:(\d+)m/)
+      if (multiRestMatch) {
+        const raw = multiRestMatch[0]
+        tokens.push({ type: 'NOTE', raw, position: i })
+        i += raw.length
+        continue
+      }
+
       const match = remaining.match(NOTE_PATTERN)
       if (!match) {
         const badToken = remaining.split(/\s/)[0]

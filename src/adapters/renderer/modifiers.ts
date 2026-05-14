@@ -120,7 +120,13 @@ export function createVexStaveNotes(
       continue
     }
 
-    const staveNote = new StaveNote({ keys: rn.keys, duration: rn.duration, clef: vexClef })
+    const isPercussionNote = rn.sourceNotes[0]?.isPercussion ?? false
+    const staveNote = new StaveNote({
+      keys: rn.keys,
+      duration: rn.duration,
+      clef: vexClef,
+      ...(isPercussionNote ? { noteType: 'x' } : {}),
+    })
 
     if (pendingGraceNotes.length > 0) {
       staveNote.addModifier(new GraceNoteGroup(pendingGraceNotes), 0)

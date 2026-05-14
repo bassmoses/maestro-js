@@ -29,6 +29,8 @@ export function nodeToNote(node: NoteNode): Note {
     chordSymbol: node.chordSymbol,
     glissando: node.glissando,
     expression: node.expression,
+    multiMeasureRest: node.multiMeasureRest,
+    percussion: node.percussion,
   }
   return new Note(noteData)
 }
@@ -45,9 +47,16 @@ export function buildScore(nodes: NoteNode[], options?: Partial<ScoreOptions>): 
   const part = score.addPart('default')
   const voice = part.addVoice('default', 'treble')
 
+  let firstNote = score.hasPickup
+  let barlineCount = 0
   for (const node of nodes) {
     // Barline nodes: skip, but check for rehearsal marks
     if (node.isBarline) {
+      // Seal a pending pickup measure at the first barline
+      if (barlineCount === 0 && score.hasPickup) {
+        voice.closePickupMeasure()
+      }
+      barlineCount++
       if (node.rehearsalMark) {
         voice.setPendingRehearsalMark(node.rehearsalMark)
       }
@@ -55,7 +64,8 @@ export function buildScore(nodes: NoteNode[], options?: Partial<ScoreOptions>): 
     }
 
     const note = nodeToNote(node)
-    voice.addNote(note, score.timeSignature)
+    voice.addNote(note, score.timeSignature, firstNote)
+    firstNote = false
   }
 
   return score

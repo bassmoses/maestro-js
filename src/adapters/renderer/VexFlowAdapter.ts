@@ -17,12 +17,18 @@ import {
   Repetition,
   VoltaType,
   Accidental as VexAccidental,
+  MultiMeasureRest,
+  TabStave,
+  TabNote,
 } from 'vexflow'
+
+import { midiToTabPositions, TUNINGS } from './TabRenderer.js'
 
 import type { Score } from '../../model/Score.js'
 import type { Measure } from '../../model/Measure.js'
+import type { Note } from '../../model/Note.js'
 import { durationToDenom } from '../../model/Duration.js'
-import type { RenderOptions, ThemeColors } from './types.js'
+import type { RenderOptions, ThemeColors, NotePositionMap } from './types.js'
 import { DEFAULT_RENDER_OPTIONS, THEMES } from './types.js'
 import { buildScoreLayout, type VoiceLayout } from './StaveBuilder.js'
 import { BEAMABLE_DURATIONS } from './vex-maps.js'
@@ -80,7 +86,7 @@ export interface RenderedScore {
  * SVG context's groupAttributes stack from becoming corrupted across staves.
  */
 export class VexFlowAdapter {
-  static render(score: Score, target: HTMLElement, options: RenderOptions = {}): void {
+  static render(score: Score, target: HTMLElement, options: RenderOptions = {}): NotePositionMap {
     const opts = { ...DEFAULT_RENDER_OPTIONS, ...options }
     const theme = THEMES[opts.theme]
     const { voiceLayouts, numLines, systemHeight, titleHeight } = buildScoreLayout(score, opts)
@@ -118,6 +124,14 @@ export class VexFlowAdapter {
 
       renderSystemLine(context, score, voiceLayouts, li, opts, theme)
     }
+
+    if (opts.ariaLabel) {
+      const label = score.title ? `Sheet music: ${score.title}` : 'Sheet music'
+      target.setAttribute('role', 'img')
+      target.setAttribute('aria-label', label)
+    }
+
+    return new Map() // position map populated by browser rendering
   }
 
   static renderToSVG(score: Score, options: RenderOptions = {}): RenderedScore {
@@ -195,12 +209,20 @@ function renderSystemLine(
   const totalMeasureCount = score.getParts()[0]?.getVoices()[0]?.getMeasures().length ?? 0
   const hasRepeats = repeatSections.length > 0
   const hasKey = score.key && score.key !== 'C' && score.key !== 'Am'
-  const vexClefName = (clef: string) => (clef === 'treble-8' ? 'treble' : clef)
+  const vexClefName = (clef: string) => {
+    if (clef === 'treble-8') return 'treble'
+    return clef // 'percussion', 'bass', 'alto', 'tenor', 'treble' pass through unchanged
+  }
   const vexClefAnnotation = (clef: string) => (clef === 'treble-8' ? '8vb' : undefined)
+
+  let noteIndexOffset = 0
 
   for (let vi = 0; vi < voiceLayouts.length; vi++) {
     const { layout, clef, voiceName } = voiceLayouts[vi]
     if (li >= layout.lines.length) continue
+
+    // Tab voices are rendered in the second pass (TabStave); skip standard stave rendering
+    if (clef === 'tab') continue
 
     const line = layout.lines[li]
     if (line.measures.length === 0) continue
@@ -224,7 +246,15 @@ function renderSystemLine(
       const w = isFirstMeasure ? measureWidth + firstMeasureExtra : measureWidth
       const measureNumber = line.measureStartIndex + mi
 
-      const stave = new Stave(xPos, line.y, w)
+      // Pickup measure: narrow width proportional to beats used, minimum 80px
+      const staveWidth =
+        isFirstMeasure && measure.isPickup ? Math.max(80, Math.round(measure.totalBeats * 50)) : w
+      const stave = new Stave(xPos, line.y, staveWidth)
+
+      // Pickup measure: hide the opening (left) barline
+      if (isFirstMeasure && measure.isPickup) {
+        stave.setBegBarType(Barline.type.NONE)
+      }
 
       // Clef + key signature on the first measure of every system line
       if (isFirstMeasure) {
@@ -285,9 +315,23 @@ function renderSystemLine(
       if (isFirstVoice) firstVoiceStaves.push(stave)
       if (isLastVoice) lastVoiceStaves.push(stave)
 
-      renderMeasureOnStave(context, measure, stave, measureNumber, clef, opts, queues, score.key)
+      renderMeasureOnStave(
+        context,
+        measure,
+        stave,
+        measureNumber,
+        clef,
+        opts,
+        queues,
+        score.key,
+        noteIndexOffset
+      )
+      // Advance offset by the number of non-grace render notes in this measure
+      noteIndexOffset += groupNotesForRender(measure.getNotes()).filter(
+        (rn) => !rn.graceNote
+      ).length
 
-      xPos += w
+      xPos += staveWidth
     }
 
     // Part name label left of first stave
@@ -324,21 +368,108 @@ function renderSystemLine(
       new StaveConnector(top, bottom).setType('singleRight').setContext(context).draw()
     }
   }
+
+  // Second pass: render TabStave for voices with clef === 'tab'
+  for (let vi = 0; vi < voiceLayouts.length; vi++) {
+    const { layout, clef } = voiceLayouts[vi]
+    if (clef !== 'tab') continue
+    if (li >= layout.lines.length) continue
+
+    const line = layout.lines[li]
+    if (line.measures.length === 0) continue
+
+    const keyAccidentals = KEY_ACCIDENTAL_COUNT[score.key] ?? 0
+    const firstMeasureExtra = 60 + keyAccidentals * 12 + (li === 0 ? 20 : 0)
+    const totalStaveWidth = opts.width - opts.padding * 2
+    const measureWidth = (totalStaveWidth - firstMeasureExtra) / line.measures.length
+
+    // Tab stave is rendered 80px below the standard system
+    const tabY = line.y + 80
+    let xPos = opts.padding
+
+    for (let mi = 0; mi < line.measures.length; mi++) {
+      const measure = line.measures[mi]
+      const isFirstMeasure = mi === 0
+      const w = isFirstMeasure ? measureWidth + firstMeasureExtra : measureWidth
+      const staveWidth =
+        isFirstMeasure && measure.isPickup ? Math.max(80, Math.round(measure.totalBeats * 50)) : w
+
+      const tabStave = new TabStave(xPos, tabY, staveWidth)
+      if (isFirstMeasure) tabStave.addClef('tab')
+      tabStave.setContext(context).draw()
+
+      const rawNotes = measure.getNotes().filter((n) => !n.isRest)
+      const tuning = TUNINGS.guitar
+
+      const tabNotes = rawNotes.map((note) => {
+        const midi = note.isPercussion ? (note.percussionMidi ?? 60) : (note.midi ?? 60)
+        const positions = midiToTabPositions([midi], tuning)
+        return new TabNote({ positions, duration: note.duration })
+      })
+
+      if (tabNotes.length > 0) {
+        try {
+          const tabVoice = new VexVoice({
+            numBeats: measure.timeSignature.beats,
+            beatValue: parseInt(durationToDenom(measure.timeSignature.noteValue ?? 'q')),
+          }).setMode(VoiceMode.SOFT)
+          tabVoice.addTickables(tabNotes)
+          new Formatter().joinVoices([tabVoice]).format([tabVoice], staveWidth - 40)
+          tabVoice.draw(context, tabStave)
+        } catch {
+          // Skip malformed tab measure without crashing the render
+        }
+      }
+
+      xPos += staveWidth
+    }
+  }
 }
 
 // ─── Notes & beams ───────────────────────────────────────────────
+
+function buildNoteAriaLabel(note: Note, measureIndex: number): string {
+  const DURATION_NAMES: Record<string, string> = {
+    w: 'whole',
+    h: 'half',
+    q: 'quarter',
+    e: 'eighth',
+    s: 'sixteenth',
+    t: 'thirty-second',
+  }
+  const pitch = note.pitch === 'R' ? 'rest' : `${note.pitch}${note.octave}`
+  const durName = DURATION_NAMES[note.duration] ?? note.duration
+  const dotted = note.dotted ? 'dotted ' : ''
+  return `${pitch}, ${dotted}${durName} note, measure ${measureIndex + 1}`
+}
 
 function renderMeasureOnStave(
   context: RenderContext,
   measure: Measure,
   stave: Stave,
-  _measureNumber: number,
+  measureNumber: number,
   clef: string,
   opts: Required<RenderOptions>,
   queues: SpannerQueues,
-  keySignature: string
+  keySignature: string,
+  noteIndexOffset: number = 0
 ): void {
-  const renderNotes = groupNotesForRender(measure.getNotes())
+  // Multi-measure rest: single note with multiMeasureRest > 0 — render compact symbol, skip normal layout
+  const rawNotes = measure.getNotes()
+  if (
+    rawNotes.length === 1 &&
+    rawNotes[0].multiMeasureRest != null &&
+    rawNotes[0].multiMeasureRest > 0
+  ) {
+    const mmr = new MultiMeasureRest(rawNotes[0].multiMeasureRest, {
+      numberOfMeasures: rawNotes[0].multiMeasureRest,
+      showNumber: true,
+    })
+    mmr.setStave(stave).setContext(context).draw()
+    return
+  }
+
+  const renderNotes = groupNotesForRender(rawNotes)
 
   if (renderNotes.length === 0) return
 
@@ -375,6 +506,25 @@ function renderMeasureOnStave(
   // Format against stave width minus padding — exactly like the working experiment
   new Formatter().joinVoices([vexVoice]).format([vexVoice], stave.getWidth() - 40)
   vexVoice.draw(context, stave)
+
+  // Per-note accessibility tagging — runs after VexFlow has drawn to the DOM
+  staveNotes.forEach((sn, localIdx) => {
+    try {
+      const el = (sn as { getSVGElement?: () => Element | null }).getSVGElement?.() ?? null
+      if (!el) return
+      const globalIdx = noteIndexOffset + localIdx
+      el.setAttribute('data-note-index', String(globalIdx))
+      el.setAttribute('data-measure-index', String(measureNumber - 1))
+      if (opts.ariaLabel) {
+        const src = renderNotes[localIdx]?.sourceNotes[0]
+        if (src) {
+          el.setAttribute('aria-label', buildNoteAriaLabel(src, measureNumber - 1))
+        }
+      }
+    } catch {
+      // SVG element unavailable (e.g. jsdom tests) — skip silently
+    }
+  })
 
   drawBeams(context, staveNotes, renderNotes, renderToStave, [measure])
   drawTuplets(context, staveNotes, renderNotes, renderToStave)

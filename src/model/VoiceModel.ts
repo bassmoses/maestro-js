@@ -3,7 +3,7 @@ import { Measure, TimeSignature } from './Measure.js'
 import { DURATION_BEATS, durationToBeats } from './Duration.js'
 import { type DurationName, type NoteData, BEAT_EPSILON } from './types.js'
 
-export type Clef = 'treble' | 'bass' | 'treble-8' | 'alto' | 'tenor'
+export type Clef = 'treble' | 'bass' | 'treble-8' | 'alto' | 'tenor' | 'percussion' | 'tab'
 
 // Durations ordered large → small for splitting
 const SPLIT_DURATIONS: readonly DurationName[] = ['w', 'h', 'q', 'e', 's', 't']
@@ -33,6 +33,7 @@ export class VoiceModel {
   private measures: Measure[]
   private _currentChordGroup: number = -1
   private _pendingRehearsalMark: string | null = null
+  private _pickupClosed: boolean = false
 
   constructor(name: string, clef: Clef) {
     this.name = name
@@ -52,7 +53,9 @@ export class VoiceModel {
    * Chord notes after the first in a group don't advance time.
    * Notes that overflow the measure are auto-split with ties.
    */
-  addNote(note: Note, timeSignature: TimeSignature): void {
+  addNote(note: Note, timeSignature: TimeSignature, isFirstNote: boolean = false): void {
+    const isFirstMeasure = this.measures.length === 0
+
     // Chord continuation notes (same group) bypass fullness check
     // — they share time with the first note of their group
     if (note.chord && note.chordGroup != null && note.chordGroup === this._currentChordGroup) {
@@ -69,7 +72,13 @@ export class VoiceModel {
     if (!current || current.isFull) {
       const mark = this._pendingRehearsalMark
       this._pendingRehearsalMark = null
-      current = new Measure(timeSignature, mark)
+      const capacityBeats = timeSignature.beats * DURATION_BEATS[timeSignature.noteValue]
+      const makePickup =
+        isFirstMeasure &&
+        isFirstNote &&
+        !this._pickupClosed &&
+        note.beats < capacityBeats - BEAT_EPSILON
+      current = new Measure(timeSignature, mark, makePickup)
       this.measures.push(current)
       this._currentChordGroup = -1
     }
@@ -111,7 +120,7 @@ export class VoiceModel {
       if (!current || current.isFull) {
         const mark = this._pendingRehearsalMark
         this._pendingRehearsalMark = null
-        current = new Measure(timeSignature, mark)
+        current = new Measure(timeSignature, mark, false)
         this.measures.push(current)
       }
 
@@ -139,12 +148,25 @@ export class VoiceModel {
         lyric: isFirst ? note.lyric : undefined,
         breath: note.breath,
         expression: note.expression,
+        percussion: note.percussion,
       }
 
       const splitNote = new Note(splitData)
       current.addNote(splitNote, true)
       remainingBeats -= splitNote.beats
       isFirst = false
+    }
+  }
+
+  closePickupMeasure(): void {
+    this._pickupClosed = true
+    // Seal the current pickup measure so subsequent notes go into a new measure
+    const current = this.measures[this.measures.length - 1]
+    if (current && current.isPickup) {
+      // Force it to appear full by demoting it — but keep isPickup=true for rendering
+      // We signal "sealed" by bumping _usedBeats isn't accessible; instead we set a
+      // flag via a dedicated method.
+      current.sealPickup()
     }
   }
 

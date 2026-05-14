@@ -9,6 +9,9 @@ export interface RenderOptions {
   partNameStyle?: 'full' | 'abbreviated'
   grandStaff?: boolean
   padding?: number
+  zoom?: number
+  responsive?: 'resize' | 'none'
+  ariaLabel?: boolean // default false — adds role="img" + aria-label to the render container and SVGs
 }
 
 export const DEFAULT_RENDER_OPTIONS: Required<RenderOptions> = {
@@ -22,7 +25,22 @@ export const DEFAULT_RENDER_OPTIONS: Required<RenderOptions> = {
   partNameStyle: 'abbreviated',
   grandStaff: false,
   padding: 20,
+  zoom: 1.0,
+  responsive: 'none',
+  ariaLabel: false,
 }
+
+export interface NotePosition {
+  noteIndex: number // same as the Map key, for when position is passed standalone
+  x: number
+  y: number
+  width: number
+  measureIndex: number
+  voiceIndex: number
+  svgElement: Element | null
+}
+
+export type NotePositionMap = Map<number, NotePosition>
 
 export interface ThemeColors {
   background: string

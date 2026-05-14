@@ -1,6 +1,7 @@
 import { Score } from '../model/Score.js'
 import { Note } from '../model/Note.js'
-import { durationToBeats, beatsToSeconds } from '../model/Duration.js'
+import { DURATION_BEATS, durationToBeats, beatsToSeconds } from '../model/Duration.js'
+import type { DurationName } from '../model/types.js'
 import { midiToFrequency } from '../model/Pitch.js'
 import { Timeline, TimelineEvent, NoteEvent } from './timeline.js'
 import type { Articulation, Ornament } from '../model/types.js'
@@ -134,6 +135,15 @@ export class Scheduler {
           const tempo = score.getTempoAtMeasure(measureNumber)
 
           for (const note of measure.getNotes()) {
+            // Multi-measure rest: advance time by N full measures, emit no events
+            if (note.multiMeasureRest != null) {
+              const fullMeasureBeats =
+                measure.timeSignature.beats *
+                (DURATION_BEATS[measure.timeSignature.noteValue as DurationName] ?? 1)
+              measureStartTime += beatsToSeconds(fullMeasureBeats * note.multiMeasureRest, tempo)
+              continue
+            }
+
             const beats = durationToBeats(note.duration, note.dotted)
             const baseDurationSecs = beatsToSeconds(beats, tempo)
             const afterFermataSecs = note.fermata

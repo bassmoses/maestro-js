@@ -363,6 +363,7 @@ export class MusicXMLAdapter {
       const voice = part.addVoice('default', initialClef)
 
       let chordGroup = 0
+      let firstNote = score.hasPickup
 
       for (const pNote of allNotes) {
         if (!pNote.chord) {
@@ -389,7 +390,10 @@ export class MusicXMLAdapter {
         }
 
         const note = new Note(noteData)
-        voice.addNote(note, score.timeSignature)
+        voice.addNote(note, score.timeSignature, firstNote)
+        if (!pNote.chord) {
+          firstNote = false
+        }
       }
     }
 

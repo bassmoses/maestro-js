@@ -30,6 +30,7 @@ export type TokenType =
   | 'GRACE_NOTE'
   | 'CHORD_SYMBOL'
   | 'GLISSANDO'
+  | 'PERCUSSION'
 
 export interface Token {
   type: TokenType
@@ -71,6 +72,8 @@ export interface NoteNode {
   chordSymbol?: string // chord symbol annotation e.g. "Cmaj7"
   glissando?: boolean // slide to next note
   expression?: string // expression text attached to this note
+  multiMeasureRest?: number // number of measures; only set when this is an R:Nm token
+  percussion?: import('../model/percussion.js').PercussionInstrument
 }
 
 export interface ValidationError {

@@ -24,6 +24,7 @@ vi.mock('tone', () => {
       seconds: 0,
     })),
     getContext: vi.fn(() => ({ state: 'running' })),
+    getDraw: vi.fn(() => ({ schedule: vi.fn(), cancel: vi.fn() })),
     start: vi.fn(),
   }
 })
@@ -359,5 +360,84 @@ describe('Song.on() / Song.off()', () => {
     const handler = vi.fn()
     // Removing a handler that was never added should not throw
     expect(() => song.off('beat', handler)).not.toThrow()
+  })
+})
+
+describe('Song.setPickup()', () => {
+  it('returns this for chaining', () => {
+    const song = new Song()
+    const result = song.setPickup(true)
+    expect(result).toBe(song)
+  })
+
+  it('sets hasPickup on the underlying score', () => {
+    const song = new Song()
+    song.setPickup(true)
+    expect(song.getScore().hasPickup).toBe(true)
+  })
+
+  it('score hasPickup is false by default', () => {
+    const song = new Song()
+    expect(song.getScore().hasPickup).toBe(false)
+  })
+
+  it('setPickup(false) disables pickup after being enabled', () => {
+    const song = new Song()
+    song.setPickup(true)
+    song.setPickup(false)
+    expect(song.getScore().hasPickup).toBe(false)
+  })
+
+  it('pickup flag persists across score rebuilds', () => {
+    const song = new Song({ timeSignature: '4/4' })
+    song.setPickup(true)
+    // Each add() triggers a rebuildScore()
+    song.add('E4:q')
+    expect(song.getScore().hasPickup).toBe(true)
+    song.add('F4:q G4:q A4:q')
+    expect(song.getScore().hasPickup).toBe(true)
+  })
+
+  it('pickup measure is created for a short first note when setPickup is true', () => {
+    const song = new Song({ timeSignature: '4/4' })
+    song.setPickup(true)
+    song.add('E4:q | C4:q D4:q E4:q F4:q')
+    const measures = song.getScore().getParts()[0].getVoices()[0].getMeasures()
+    expect(measures[0].isPickup).toBe(true)
+  })
+
+  it('no pickup measure is created without setPickup', () => {
+    const song = new Song({ timeSignature: '4/4' })
+    song.add('E4:q | C4:q D4:q E4:q F4:q')
+    const measures = song.getScore().getParts()[0].getVoices()[0].getMeasures()
+    expect(measures[0].isPickup).toBe(false)
+  })
+})
+
+describe('Song.createTimingCallbacks', () => {
+  it('returns a TimingCallbacks instance', () => {
+    const song = new Song({ tempo: 120 })
+    song.add('C4:q D4:q E4:q F4:q')
+    const tc = song.createTimingCallbacks({})
+    expect(tc).toBeDefined()
+    expect(typeof tc.buildNoteEvents).toBe('function')
+    expect(typeof tc.getNoteAt).toBe('function')
+    expect(typeof tc.getProgress).toBe('function')
+  })
+
+  it('TimingCallbacks has correct total duration', () => {
+    // At 120bpm, 4 quarter notes = 4 beats = 2 seconds
+    const song = new Song({ tempo: 120 })
+    song.add('C4:q D4:q E4:q F4:q')
+    const tc = song.createTimingCallbacks({})
+    expect(tc.duration).toBeCloseTo(2.0)
+  })
+
+  it('getNoteAt returns first note at t=0.1', () => {
+    const song = new Song({ tempo: 120 })
+    song.add('C4:q D4:q E4:q F4:q')
+    const tc = song.createTimingCallbacks({})
+    const ev = tc.getNoteAt(0.1)
+    expect(ev?.pitches[0]).toBe('C4')
   })
 })

@@ -1,3 +1,5 @@
+import type { PercussionInstrument } from './percussion.js'
+
 export type PitchName = 'C' | 'D' | 'E' | 'F' | 'G' | 'A' | 'B'
 export type Accidental = '#' | 'b' | 'bb' | '##' | null
 export type Octave = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
@@ -31,4 +33,6 @@ export interface NoteData {
   chordSymbol?: string // chord symbol annotation e.g. "Cmaj7"
   glissando?: boolean // slide to next note
   expression?: string // expression text above note (e.g. 'soli', 'tutti')
+  multiMeasureRest?: number // number of measures; only set for R:Nm multi-measure rest tokens
+  percussion?: PercussionInstrument // set for unpitched percussion notes
 }

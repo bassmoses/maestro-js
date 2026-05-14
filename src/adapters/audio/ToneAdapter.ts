@@ -3,6 +3,8 @@ import type { Score } from '../../model/Score.js'
 import type { Timeline, TimelineEvent } from '../../scheduler/timeline.js'
 import { Scheduler } from '../../scheduler/Scheduler.js'
 import { getInstrument } from './instruments/index.js'
+import { TimingCallbacks } from '../../scheduler/TimingCallbacks.js'
+import type { TimingCallbackOptions } from '../../scheduler/timeline.js'
 
 // Map MIDI velocity (0-127) to Tone.js volume in dB
 function velocityToGain(velocity: number): number {
@@ -45,6 +47,7 @@ export class ToneAdapter {
   private lastMeasure = -1
   private lastBeat = -1
   private effectNodes: Tone.ToneAudioNode[] = []
+  private timingCallbacks: TimingCallbacks | null = null
 
   /**
    * Ensure the audio context is started (required by browsers after user gesture).
@@ -90,6 +93,54 @@ export class ToneAdapter {
     if (options?.voices?.length && options.solo) {
       this.timeline = this.timeline.filter((e) => activeVoices.has(e.note.voice))
     }
+  }
+
+  /**
+   * Wire TimingCallbacks into the Tone.js Draw scheduler so callbacks fire
+   * at audio-clock-accurate times during playback.
+   * Must be called after load().
+   */
+  setTimingCallbacks(callbacks: TimingCallbackOptions): TimingCallbacks {
+    if (!this.timeline.length) {
+      throw new Error('No score loaded. Call load() before setTimingCallbacks().')
+    }
+    const tc = new TimingCallbacks(this.timeline, callbacks)
+    this.timingCallbacks = tc
+
+    const noteEvents = tc.buildNoteEvents()
+    for (const ev of noteEvents) {
+      const t = ev.time // seconds from transport start
+
+      // onNote — fires for every note
+      if (callbacks.onNote) {
+        Tone.getDraw().schedule(() => {
+          callbacks.onNote!(ev)
+        }, t)
+      }
+
+      // onMeasure — fires on beat 0 of each measure
+      if (callbacks.onMeasure && ev.beatIndex === 0) {
+        Tone.getDraw().schedule(() => {
+          callbacks.onMeasure!(ev.measureIndex)
+        }, t)
+      }
+
+      // onBeat — fires for every beat
+      if (callbacks.onBeat) {
+        Tone.getDraw().schedule(() => {
+          callbacks.onBeat!(ev.measureIndex, ev.beatIndex)
+        }, t)
+      }
+    }
+
+    // onEnd — fires after the last note's duration
+    if (callbacks.onEnd) {
+      Tone.getDraw().schedule(() => {
+        callbacks.onEnd!()
+      }, tc.duration)
+    }
+
+    return tc
   }
 
   /**

@@ -10,22 +10,37 @@ export interface TimeSignature {
 export class Measure {
   readonly timeSignature: TimeSignature
   readonly rehearsalMark: string | null
+  private _isPickup: boolean
+  private _pickupSealed: boolean = false
   private notes: Note[]
   private _usedBeats: number = 0
 
-  constructor(timeSignature: TimeSignature, rehearsalMark: string | null = null) {
+  constructor(
+    timeSignature: TimeSignature,
+    rehearsalMark: string | null = null,
+    isPickup: boolean = false
+  ) {
     this.timeSignature = timeSignature
     this.rehearsalMark = rehearsalMark
+    this._isPickup = isPickup
     this.notes = []
   }
 
-  /**
-   * The total beat capacity of this measure based on the time signature.
-   * e.g. 4/4 => 4 beats (based on quarter note = 1 beat reference).
-   */
   private get capacityBeats(): number {
     const noteBeats = DURATION_BEATS[this.timeSignature.noteValue]
     return this.timeSignature.beats * noteBeats
+  }
+
+  /**
+   * True when this is an intentionally incomplete pickup bar.
+   * A measure initialized as a pickup that is later filled to capacity
+   * is treated as a regular measure (it was not actually a pickup).
+   */
+  get isPickup(): boolean {
+    if (!this._isPickup) return false
+    // If it filled naturally (not sealed early), it's not really a pickup
+    if (!this._pickupSealed && this._usedBeats >= this.capacityBeats - BEAT_EPSILON) return false
+    return true
   }
 
   get totalBeats(): number {
@@ -37,16 +52,18 @@ export class Measure {
   }
 
   get isFull(): boolean {
+    if (this._pickupSealed) return true
+    if (this._isPickup) return false
     return this.beatsRemaining <= BEAT_EPSILON
   }
 
-  /**
-   * Add a note to this measure.
-   * If `advanceTime` is false, the note is stacked at the current position
-   * (for chord notes that share the same time slot).
-   */
+  /** Called by VoiceModel.closePickupMeasure() to finalize the pickup bar. */
+  sealPickup(): void {
+    this._pickupSealed = true
+  }
+
   addNote(note: Note, advanceTime: boolean = true): void {
-    if (advanceTime && note.beats > this.beatsRemaining + BEAT_EPSILON) {
+    if (advanceTime && !this._isPickup && note.beats > this.beatsRemaining + BEAT_EPSILON) {
       throw new Error(
         `Note (${note.beats} beats) would overflow measure ` +
           `(${this.beatsRemaining} beats remaining)`

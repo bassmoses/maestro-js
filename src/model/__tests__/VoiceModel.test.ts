@@ -122,3 +122,97 @@ describe('VoiceModel', () => {
     expect(measure.beatsRemaining).toBeCloseTo(3)
   })
 })
+
+describe('VoiceModel pickup measure detection', () => {
+  it('first measure is a pickup when isFirstNote=true and note does not fill bar', () => {
+    const vm = new VoiceModel('soprano', 'treble')
+    const ts: TimeSignature = { beats: 4, noteValue: 'q' }
+    const note = new Note({
+      pitch: 'E',
+      accidental: null,
+      octave: 4,
+      duration: 'q',
+      dotted: false,
+      dynamic: null,
+      tied: false,
+      slurred: false,
+      chord: false,
+      fermata: false,
+      breath: false,
+      triplet: false,
+    })
+    vm.addNote(note, ts, true)
+    expect(vm.getMeasures()[0].isPickup).toBe(true)
+    expect(vm.getMeasures()).toHaveLength(1)
+  })
+
+  it('first measure is NOT a pickup when first note fills the bar', () => {
+    const vm = new VoiceModel('soprano', 'treble')
+    const ts: TimeSignature = { beats: 4, noteValue: 'q' }
+    for (let i = 0; i < 4; i++) {
+      const note = new Note({
+        pitch: 'C',
+        accidental: null,
+        octave: 4,
+        duration: 'q',
+        dotted: false,
+        dynamic: null,
+        tied: false,
+        slurred: false,
+        chord: false,
+        fermata: false,
+        breath: false,
+        triplet: false,
+      })
+      vm.addNote(note, ts, i === 0)
+    }
+    expect(vm.getMeasures()[0].isPickup).toBe(false)
+  })
+
+  it('pickup measure followed by full measure after closePickupMeasure()', () => {
+    const vm = new VoiceModel('soprano', 'treble')
+    const ts: TimeSignature = { beats: 4, noteValue: 'q' }
+    vm.addNote(
+      new Note({
+        pitch: 'E',
+        accidental: null,
+        octave: 4,
+        duration: 'q',
+        dotted: false,
+        dynamic: null,
+        tied: false,
+        slurred: false,
+        chord: false,
+        fermata: false,
+        breath: false,
+        triplet: false,
+      }),
+      ts,
+      true
+    )
+    vm.closePickupMeasure()
+    for (let i = 0; i < 4; i++) {
+      vm.addNote(
+        new Note({
+          pitch: 'C',
+          accidental: null,
+          octave: 4,
+          duration: 'q',
+          dotted: false,
+          dynamic: null,
+          tied: false,
+          slurred: false,
+          chord: false,
+          fermata: false,
+          breath: false,
+          triplet: false,
+        }),
+        ts,
+        false
+      )
+    }
+    expect(vm.getMeasures()).toHaveLength(2)
+    expect(vm.getMeasures()[0].isPickup).toBe(true)
+    expect(vm.getMeasures()[1].isPickup).toBe(false)
+  })
+})

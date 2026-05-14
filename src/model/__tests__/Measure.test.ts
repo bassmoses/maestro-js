@@ -126,3 +126,36 @@ describe('Measure (6/8)', () => {
     expect(measure.isFull).toBe(true)
   })
 })
+
+describe('Measure pickup flag', () => {
+  it('isPickup defaults to false', () => {
+    const m = new Measure({ beats: 4, noteValue: 'q' })
+    expect(m.isPickup).toBe(false)
+  })
+
+  it('isPickup is true when constructed with isPickup: true', () => {
+    const m = new Measure({ beats: 4, noteValue: 'q' }, null, true)
+    expect(m.isPickup).toBe(true)
+  })
+
+  it('pickup measure allows fewer beats than capacity without being considered full', () => {
+    const m = new Measure({ beats: 4, noteValue: 'q' }, null, true)
+    const note = new Note({
+      pitch: 'C',
+      accidental: null,
+      octave: 4,
+      duration: 'q',
+      dotted: false,
+      dynamic: null,
+      tied: false,
+      slurred: false,
+      chord: false,
+      fermata: false,
+      breath: false,
+      triplet: false,
+    })
+    m.addNote(note, true)
+    expect(m.totalBeats).toBe(1)
+    expect(m.isFull).toBe(false)
+  })
+})

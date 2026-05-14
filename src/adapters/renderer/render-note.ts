@@ -31,6 +31,7 @@ export interface RenderNote {
 
 export function noteToVexKey(note: Note): string {
   if (note.isRest) return 'B/4'
+  if (note.isPercussion) return 'b/4'
   const acc = note.accidental ?? ''
   return `${note.pitch}${acc}/${note.octave}`
 }

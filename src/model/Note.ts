@@ -10,6 +10,8 @@ import {
 } from './types.js'
 import { durationToBeats } from './Duration.js'
 import { pitchToMidi, midiToFrequency } from './Pitch.js'
+import { GM_DRUM_MAP } from './percussion.js'
+import type { PercussionInstrument } from './percussion.js'
 
 export class Note implements NoteData {
   readonly pitch: PitchName | 'R'
@@ -33,6 +35,8 @@ export class Note implements NoteData {
   readonly chordSymbol: string | undefined
   readonly glissando: boolean
   readonly expression: string | undefined
+  readonly multiMeasureRest: number | undefined
+  readonly percussion: PercussionInstrument | undefined
 
   constructor(data: NoteData) {
     this.pitch = data.pitch
@@ -56,6 +60,8 @@ export class Note implements NoteData {
     this.chordSymbol = data.chordSymbol ?? undefined
     this.glissando = data.glissando ?? false
     this.expression = data.expression ?? undefined
+    this.multiMeasureRest = data.multiMeasureRest
+    this.percussion = data.percussion ?? undefined
   }
 
   get beats(): number {
@@ -79,5 +85,14 @@ export class Note implements NoteData {
     const m = this.midi
     if (m === null) return null
     return midiToFrequency(m)
+  }
+
+  get isPercussion(): boolean {
+    return this.percussion !== undefined
+  }
+
+  get percussionMidi(): number | null {
+    if (!this.percussion) return null
+    return GM_DRUM_MAP[this.percussion] ?? null
   }
 }

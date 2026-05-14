@@ -3,7 +3,11 @@
 // Primary user-facing API
 export { Song } from './api/Song.js'
 export type { SongOptions, SongJSON, RenderOptions, PlayOptions, SeekPosition } from './api/Song.js'
+
 export { Voice } from './api/Voice.js'
+
+// Phase 2 Song types
+export type { NoteClickInfo, InstrumentOptions } from './api/Song.js'
 
 // Renderer
 export { VexFlowAdapter } from './adapters/renderer/VexFlowAdapter.js'
@@ -12,6 +16,13 @@ export { findBeamGroups } from './adapters/renderer/BeamGrouper.js'
 export { buildStaveLayout, buildScoreLayout } from './adapters/renderer/StaveBuilder.js'
 export type { RenderOptions as RendererOptions } from './adapters/renderer/types.js'
 export { DEFAULT_RENDER_OPTIONS, THEMES } from './adapters/renderer/types.js'
+
+// Phase 2 renderer types
+export type { NotePosition, NotePositionMap } from './adapters/renderer/types.js'
+
+// Phase 2 UI
+export { Cursor } from './ui/Cursor.js'
+export type { CursorOptions } from './ui/Cursor.js'
 
 // Audio
 export { ToneAdapter } from './adapters/audio/ToneAdapter.js'
@@ -24,6 +35,10 @@ export type {
 export { getInstrument } from './adapters/audio/instruments/index.js'
 export type { InstrumentConfig, InstrumentName } from './adapters/audio/instruments/index.js'
 
+// Phase 2 audio
+export { SoundfontAdapter } from './adapters/audio/SoundfontAdapter.js'
+export type { SoundfontOptions } from './adapters/audio/SoundfontAdapter.js'
+
 // Internal model (for advanced users)
 export { Score } from './model/Score.js'
 export type { LoopRange, RepeatSection, VoltaEnding } from './model/Score.js'
@@ -35,8 +50,22 @@ export type * from './model/types.js'
 export { buildScore, nodeToNote } from './model/converter.js'
 export { Scheduler } from './scheduler/Scheduler.js'
 export type { Timeline, TimelineEvent, NoteEvent, BeatEvent } from './scheduler/timeline.js'
+export { TimingCallbacks } from './scheduler/TimingCallbacks.js'
+export type { NoteTimingEvent, TimingCallbackOptions } from './scheduler/timeline.js'
 
 // Export adapters
 export { ScoreJSONAdapter } from './adapters/export/ScoreJSONAdapter.js'
 export type { ScoreJSON } from './adapters/export/ScoreJSONAdapter.js'
 export { MusicXMLAdapter } from './adapters/import/MusicXMLAdapter.js'
+
+// Phase 3 — Percussion
+export { PERCUSSION_INSTRUMENTS, GM_DRUM_MAP } from './model/percussion.js'
+export type { PercussionInstrument } from './model/percussion.js'
+
+// Phase 3 — Tablature
+export { TUNINGS, pitchToFret } from './adapters/renderer/TabRenderer.js'
+export type { FretPosition, Tuning } from './adapters/renderer/TabRenderer.js'
+
+// Phase 3 — Chord Grid
+export { ChordGridRenderer, extractChordSequence } from './adapters/renderer/ChordGridRenderer.js'
+export type { ChordGridOptions } from './adapters/renderer/ChordGridRenderer.js'

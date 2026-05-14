@@ -52,6 +52,7 @@ export class Score {
   private fineMeasure: number | null = null
   private voltaEndings: VoltaEnding[] = []
   private loopRange: LoopRange | null = null
+  private _hasPickup: boolean = false
 
   constructor(options?: Partial<ScoreOptions>) {
     this.tempo = options?.tempo ?? 120
@@ -237,5 +238,20 @@ export class Score {
    */
   getLoop(): LoopRange | null {
     return this.loopRange
+  }
+
+  /**
+   * Mark this score as having a pickup (anacrusis) measure.
+   */
+  setPickup(enabled: boolean): this {
+    this._hasPickup = enabled
+    return this
+  }
+
+  /**
+   * Whether this score has a pickup (anacrusis) measure.
+   */
+  get hasPickup(): boolean {
+    return this._hasPickup
   }
 }
